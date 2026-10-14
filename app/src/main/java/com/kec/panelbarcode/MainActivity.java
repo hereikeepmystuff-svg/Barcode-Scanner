@@ -246,6 +246,13 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) { }
     }
 
+    /** Custom paper size in mm, as the page sent it (width x height). */
+    private static PrintAttributes.MediaSize pageSize(int wMm, int hMm) {
+        int w = Math.round(wMm / 25.4f * 1000), h = Math.round(hMm / 25.4f * 1000);
+        PrintAttributes.MediaSize m = new PrintAttributes.MediaSize("PBT_PAGE", wMm + " x " + hMm + " mm", Math.min(w, h), Math.max(w, h));
+        return w > h ? m.asLandscape() : m;
+    }
+
     /** Methods callable from the web page as window.Android.* */
     private class Bridge {
         @JavascriptInterface
@@ -270,12 +277,12 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void printLabels() {
+        public void printLabels(final int wMm, final int hMm) {
             runOnUiThread(() -> {
                 PrintManager pm = (PrintManager) getSystemService(PRINT_SERVICE);
                 PrintDocumentAdapter ad = web.createPrintDocumentAdapter("Panel stickers");
                 PrintAttributes attrs = new PrintAttributes.Builder()
-                        .setMediaSize(new PrintAttributes.MediaSize("PBT_LABEL", "Label 100 x 50 mm", 1969, 3937).asLandscape())
+                        .setMediaSize(pageSize(wMm, hMm))
                         .setResolution(new PrintAttributes.Resolution("r300", "300 dpi", 300, 300))
                         .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
                         .build();

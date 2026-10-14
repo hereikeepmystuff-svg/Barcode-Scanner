@@ -72,14 +72,23 @@ video{width:100%;max-height:300px;background:#000;border-radius:10px}
 .stk .size{position:absolute;left:4mm;right:4mm;bottom:3.4mm;text-align:center;font-weight:800;white-space:nowrap;line-height:1.1}
 #printRoot{display:none}
 @media print{
-  @page{size:100mm 50mm;margin:0}
+  @page{margin:0}
   html,body{background:#fff}
   body>*:not(#printRoot){display:none!important}
   #printRoot{display:block}
-  #printRoot .stk{page-break-after:always;break-after:page}
-  #printRoot .stk:last-child{page-break-after:auto;break-after:auto}
+  #printRoot .sheet{page-break-after:always;break-after:page}
+  #printRoot .sheet:last-child{page-break-after:auto;break-after:auto}
 }
+.sheet{position:relative;overflow:hidden;background:#fff}
+.sheetgrid{position:absolute;display:grid}
+.cell{position:relative;overflow:hidden}
+.cell .stk{position:absolute;left:0;top:0}
+.cell.rot .stk{transform-origin:0 0;transform:translateX(50mm) rotate(90deg)}
+.cuts .cell{outline:.12mm solid #888}
+#sheetBox{overflow:hidden;border:1px dashed var(--line);border-radius:8px;background:#e9ecf1;padding:10px;margin-top:10px}
+#sheetBox .sheet{box-shadow:0 1px 6px rgba(0,0,0,.25)}
 </style>
+<style id="pageStyle"></style>
 </head>
 <body>
 <header>
@@ -150,14 +159,29 @@ video{width:100%;max-height:300px;background:#000;border-radius:10px}
         <div class="row" style="margin-top:10px"><button class="b" id="btnPrintOne" disabled>Print this sticker</button></div>
       </div>
       <div class="card">
+        <h2>Page type &amp; layout</h2>
+        <p class="mut small" style="margin-top:0">Pick the paper you will print on. The app fits as many stickers per page as possible (it also tries turning the stickers or the page sideways) and prints exactly that grid.</p>
+        <div class="row">
+          <label>Page type <select id="lPaper"></select></label>
+          <span id="lCustom" style="display:none"><label>W <input id="lW" type="number" min="20" step="0.1" style="width:70px"> mm</label> <label>H <input id="lH" type="number" min="20" step="0.1" style="width:70px"> mm</label></span>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label>Page margin <input id="lMargin" type="number" min="0" step="0.5" style="width:70px"> mm</label>
+          <label>Gap between stickers <input id="lGap" type="number" min="0" step="0.5" style="width:70px"> mm</label>
+          <label><input type="checkbox" id="lCuts"> Thin cut lines</label>
+        </div>
+        <div id="lInfo" class="note" style="margin:10px 0 0"></div>
+        <div id="sheetBox"><div id="sheetScale" style="transform-origin:0 0"></div></div>
+      </div>
+      <div class="card">
         <h2>Print stickers in bulk</h2>
-        <p class="mut small" style="margin-top:0">Prints every barcode matching the filters above, in batches (browsers struggle with thousands of pages at once). In the print dialog choose your label printer, paper size 100 × 50 mm, margins none, scale 100 %. Or choose “Save as PDF”.</p>
+        <p class="mut small" style="margin-top:0">Prints every barcode matching the filters above, in batches (browsers struggle with thousands of pages at once). In the print dialog choose the same paper size as selected above, margins none, scale 100 %. Or choose “Save as PDF”.</p>
         <div class="row">
           <label>Batch size <input id="batchSize" type="number" min="1" max="1000" value="100" style="width:80px"></label>
           <label>Batch no. <input id="batchNo" type="number" min="1" value="1" style="width:70px"></label>
           <span class="mut small" id="batchInfo"></span>
         </div>
-        <div class="row" style="margin-top:10px"><button class="b" id="btnPrintBatch" disabled>Print this batch</button></div>
+        <div class="row" style="margin-top:10px"><button class="b" id="btnPrintBatch" disabled>Print this batch</button><button class="b sec" id="btnWholePages">Round batch size to whole pages</button></div>
       </div>
       <div class="card">
         <h2>Sticker text</h2>
@@ -500,7 +524,7 @@ const idb={db:null,ok:false,
 };
 
 /* ================= state ================= */
-let units=[],items=[],byId=new Map(),log=[],meta={},settings={proj1:'Adani Linkbay',proj2:'Tower A',left:'Tower A',logo:true,sizePt:16,digits:6};
+let units=[],items=[],byId=new Map(),log=[],meta={},settings={proj1:'Adani Linkbay',proj2:'Tower A',left:'Tower A',logo:true,sizePt:16,digits:6,paper:'label',pw:210,ph:297,margin:5,gap:0,cuts:false};
 let filtered=[],page=0,selId=null,mode='Packed',pending=null;
 let activity=[],dirty=false,dirHandle=null,backupsInfo=[],lastBackupAt=0,folderMsg='';
 const BACKUP_MS=window.__BACKUP_MS||15*60*1000,KEEP=3;
@@ -707,13 +731,14 @@ function renderTable(){
   $('#pgInfo').textContent=`Page ${page+1} / ${pages}`;
   $('#pgPrev').disabled=page===0;$('#pgNext').disabled=page>=pages-1;
   $('#fCount').textContent=`${filtered.length.toLocaleString()} of ${units.length.toLocaleString()} barcodes`;
-  updateBatch();
+  renderLayout();
 }
 function updateBatch(){
   const bs=Math.max(1,Math.min(1000,+$('#batchSize').value||100));const nb=Math.max(1,Math.ceil(filtered.length/bs));
   let b=Math.max(1,Math.min(nb,+$('#batchNo').value||1));$('#batchNo').value=b;
   const from=(b-1)*bs,to=Math.min(filtered.length,from+bs);
-  $('#batchInfo').textContent=filtered.length?`Batch ${b} of ${nb}: stickers ${from+1}–${to} of ${filtered.length} (barcodes ${filtered[from].id} → ${filtered[to-1].id})`:'';
+  const Lb=layout();const pg=Lb.n?Math.ceil((to-from)/Lb.n):0;
+  $('#batchInfo').textContent=filtered.length?`Batch ${b} of ${nb}: stickers ${from+1}–${to} of ${filtered.length} (barcodes ${filtered[from].id} → ${filtered[to-1].id})${pg?' · '+pg+' page'+(pg>1?'s':''):''}`:'';
   $('#btnPrintBatch').disabled=!filtered.length;
 }
 
@@ -745,11 +770,57 @@ function select(id){
   $('#detail').innerHTML=rows.map(([k,v])=>`<div>${k}</div><div>${esc(v)}</div>`).join('');
   $('#btnPrintOne').disabled=false;
 }
+const PAPERS={label:{n:'Label roll 100 × 50 mm (1 sticker per page)',w:100,h:50},A4:{n:'A4 (210 × 297 mm)',w:210,h:297},A3:{n:'A3 (297 × 420 mm)',w:297,h:420},A5:{n:'A5 (148 × 210 mm)',w:148,h:210},Letter:{n:'Letter (215.9 × 279.4 mm)',w:215.9,h:279.4},Legal:{n:'Legal (215.9 × 355.6 mm)',w:215.9,h:355.6},custom:{n:'Custom size…',w:0,h:0}};
+function layout(){
+  const st=settings,key=PAPERS[st.paper]?st.paper:'A4';
+  let pw=PAPERS[key].w,ph=PAPERS[key].h;if(key==='custom'){pw=+st.pw||210;ph=+st.ph||297;}
+  const isLabel=key==='label';
+  const m=isLabel?0:Math.max(0,+st.margin||0),g=isLabel?0:Math.max(0,+st.gap||0);
+  let best=null;
+  for(const [W,H] of [[pw,ph],[ph,pw]])for(const rot of [false,true]){
+    const sw=rot?50:100,sh=rot?100:50;
+    const cols=Math.max(0,Math.floor((W-2*m+g+1e-6)/(sw+g))),rows=Math.max(0,Math.floor((H-2*m+g+1e-6)/(sh+g)));
+    const c={W,H,rot,sw,sh,cols,rows,n:cols*rows,g,m,key,name:PAPERS[key].n};
+    if(!best||c.n>best.n)best=c;
+  }
+  return best;
+}
+function sheetsHTML(list,L){
+  const gw=L.cols*L.sw+(L.cols-1)*L.g,gh=L.rows*L.sh+(L.rows-1)*L.g;
+  const ox=(L.W-gw)/2,oy=L.key==='label'?0:(L.H-gh)/2;
+  const out=[];
+  for(let i=0;i<list.length;i+=L.n){
+    out.push(`<div class="sheet${settings.cuts&&L.key!=='label'?' cuts':''}" style="width:${L.W}mm;height:${L.H}mm"><div class="sheetgrid" style="left:${ox.toFixed(2)}mm;top:${oy.toFixed(2)}mm;grid-template-columns:repeat(${L.cols},${L.sw}mm);grid-auto-rows:${L.sh}mm;gap:${L.g}mm">`+
+      list.slice(i,i+L.n).map(u=>`<div class="cell${L.rot?' rot':''}" style="width:${L.sw}mm;height:${L.sh}mm">${stickerHTML(u)}</div>`).join('')+'</div></div>');
+  }
+  return out.join('');
+}
+function renderLayout(){
+  const L=layout();const box=$('#sheetBox'),sc=$('#sheetScale');
+  if(!L.n){$('#lInfo').className='note bad';$('#lInfo').innerHTML='A 100 × 50 mm sticker does not fit on this page with these margins. Reduce the margin or pick a larger page.';sc.innerHTML='';box.style.height='0';box.style.padding='0';updateBatch();return;}
+  box.style.padding='10px';
+  $('#lInfo').className='note';
+  $('#lInfo').innerHTML=`<b>${L.n} sticker${L.n>1?'s':''} per page</b> (${L.cols} across × ${L.rows} down) on ${esc(L.name.replace(/ \(.*\)| 100.*/,''))} ${L.W>L.H?'landscape':'portrait'}${L.rot?', stickers turned sideways':''}.<br>`+
+    `<span class="small">Set the printer to <b>${L.W} × ${L.H} mm ${L.W>L.H?'landscape':'portrait'}</b>, margins none, scale 100 %. ${filtered.length?`The current filter (${filtered.length.toLocaleString()} stickers) needs <b>${Math.ceil(filtered.length/L.n).toLocaleString()}</b> page(s).`:''}</span>`;
+  const first=filtered.slice(0,L.n);
+  if(!first.length){sc.innerHTML='';box.style.height='0';box.style.padding='0';updateBatch();return;}
+  sc.innerHTML=sheetsHTML(first,L).replace(/class="sheet/,'class="sheet pv');
+  const avail=box.clientWidth-20,full=L.W*3.7795;if(avail<60){updateBatch();return;}const k=Math.min(1.2,avail/full);
+  sc.style.transform=`scale(${k})`;box.style.height=(L.H*3.7795*k+20)+'px';
+  updateBatch();
+}
 function printUnits(list){
   if(!list.length)return;
-  logAct('Stickers printed',`${list.length} sticker(s): ${list[0].id}${list.length>1?' → '+list[list.length-1].id:''}`);
-  $('#printRoot').innerHTML=list.map(stickerHTML).join('');
-  setTimeout(()=>{if(window.Android&&typeof window.Android.printLabels==='function')window.Android.printLabels();else window.print();},60);
+  const L=layout();
+  if(!L.n){alert('A 100 × 50 mm sticker does not fit on this page with these margins. Reduce the margin or pick a larger page.');return;}
+  const pages=Math.ceil(list.length/L.n);
+  logAct('Stickers printed',`${list.length} sticker(s): ${list[0].id}${list.length>1?' → '+list[list.length-1].id:''} — ${L.name}, ${L.cols}×${L.rows}${L.rot?' (sideways)':''} per page, ${pages} page(s)`);
+  $('#pageStyle').textContent=`@page{size:${L.W}mm ${L.H}mm;margin:0}`;
+  $('#printRoot').innerHTML=sheetsHTML(list,L);
+  setTimeout(()=>{
+    if(window.Android&&typeof window.Android.printLabels==='function'){try{window.Android.printLabels(Math.round(L.W),Math.round(L.H));return;}catch(e){}}
+    window.print();
+  },60);
 }
 
 /* ================= scanning ================= */
@@ -989,7 +1060,7 @@ function refreshAll(){updateGate();
 let setT;function saveSettings(){dirty=true;clearTimeout(setT);setT=setTimeout(()=>logAct('Settings changed',`Heading “${settings.proj1}”, left text “${settings.left}”, size ${settings.sizePt} pt, logo ${settings.logo?'on':'off'}, ${settings.digits} digits`),1500);meta.settings=settings;idb.put('meta',{k:'settings',v:settings});if(selId)select(selId);}
 document.addEventListener('DOMContentLoaded',async()=>{
   await loadAll();
-  $('#nav').onclick=e=>{const t=e.target.dataset.t;if(!t)return;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b===e.target));document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id==='t-'+t));if(t==='stickers')fitPreview();if(t==='scan')setTimeout(()=>$('#scanIn').focus(),50);if(t!=='scan')stopCam();if(t==='report')renderGroup();};
+  $('#nav').onclick=e=>{const t=e.target.dataset.t;if(!t)return;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b===e.target));document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id==='t-'+t));if(t==='stickers'){fitPreview();renderLayout();}if(t==='scan')setTimeout(()=>$('#scanIn').focus(),50);if(t!=='scan')stopCam();if(t==='report')renderGroup();};
   $('#digits').value=settings.digits;
   $('#digits').onchange=e=>{logAct('Digits changed',e.target.value);settings.digits=Math.max(1,Math.min(10,+e.target.value||6));e.target.value=settings.digits;saveSettings();
     if(pending&&!pending.parsed.register){pending.built=makeUnits(pending.parsed);showPreview(pending,$('#fileName').textContent);}
@@ -1009,6 +1080,12 @@ document.addEventListener('DOMContentLoaded',async()=>{
   $('#btnPrintOne').onclick=()=>{const u=byId.get(selId);if(u)printUnits([u]);};
   ['#batchSize','#batchNo'].forEach(s=>$(s).oninput=updateBatch);
   $('#btnPrintBatch').onclick=()=>{const bs=Math.max(1,Math.min(1000,+$('#batchSize').value||100));const b=Math.max(1,+$('#batchNo').value||1);printUnits(filtered.slice((b-1)*bs,(b-1)*bs+bs));};
+  $('#lPaper').innerHTML=Object.entries(PAPERS).map(([k,v])=>`<option value="${k}">${v.n}</option>`).join('');
+  const syncL=()=>{$('#lPaper').value=PAPERS[settings.paper]?settings.paper:'A4';$('#lW').value=settings.pw;$('#lH').value=settings.ph;$('#lMargin').value=settings.margin;$('#lGap').value=settings.gap;$('#lCuts').checked=!!settings.cuts;$('#lCustom').style.display=settings.paper==='custom'?'':'none';$('#lMargin').disabled=$('#lGap').disabled=$('#lCuts').disabled=settings.paper==='label';};
+  syncL();
+  const lChange=()=>{settings.paper=$('#lPaper').value;settings.pw=+$('#lW').value||210;settings.ph=+$('#lH').value||297;settings.margin=Math.max(0,+$('#lMargin').value||0);settings.gap=Math.max(0,+$('#lGap').value||0);settings.cuts=$('#lCuts').checked;syncL();saveSettings();renderLayout();};
+  ['#lPaper','#lW','#lH','#lMargin','#lGap','#lCuts'].forEach(q=>$(q).addEventListener(q==='#lPaper'||q==='#lCuts'?'change':'input',lChange));
+  $('#btnWholePages').onclick=()=>{const L=layout();if(!L.n)return;const bs=Math.max(1,+$('#batchSize').value||100);$('#batchSize').value=Math.min(1000,Math.max(L.n,Math.round(bs/L.n)*L.n));updateBatch();renderLayout();};
   $('#sLeft').value=settings.left;$('#sSize').value=settings.sizePt;$('#sProj1').value=settings.proj1;$('#sLogo').checked=settings.logo;
   $('#sProj1').oninput=e=>{settings.proj1=e.target.value;saveSettings();};$('#sLeft').oninput=e=>{settings.left=e.target.value;saveSettings();};$('#sSize').oninput=e=>{settings.sizePt=Math.max(6,Math.min(30,+e.target.value||16));saveSettings();};$('#sLogo').onchange=e=>{settings.logo=e.target.checked;saveSettings();};
   $('#modes').onclick=e=>{const m=e.target.dataset.m;if(!m)return;mode=m;logAct('Status selected',m);meta.mode=m;idb.put('meta',{k:'mode',v:m});renderModes();$('#scanIn').focus();};
@@ -1028,7 +1105,7 @@ document.addEventListener('DOMContentLoaded',async()=>{
   $('#btnBackup').onclick=backup;
   $('#restoreIn').onchange=e=>{if(e.target.files[0])restore(e.target.files[0]);e.target.value='';};
   $('#btnClear').onclick=async()=>{if(!confirm('Delete ALL barcodes, statuses and scan log from this browser? (Download a backup first if unsure.)'))return;if(!confirm('Really delete everything?'))return;await makeBackup('before delete');for(const s of ['units','items','log'])await idb.clear(s);logAct('All data deleted',units.length+' barcodes removed');dirty=true;units=[];items=[];log=[];byId=new Map();selId=null;refreshAll();};
-  window.addEventListener('resize',fitPreview);
+  window.addEventListener('resize',()=>{fitPreview();renderLayout();});
   window.addEventListener('afterprint',()=>{$('#printRoot').innerHTML='';});
   renderModes();refreshAll();renderBatch();renderBackups();renderActivity();logAct('App opened',units.length?units.length+' barcodes loaded':'no data yet');
   if(dirHandle)dirHandle.queryPermission({mode:'readwrite'}).then(p=>{if(p!=='granted'){folderMsg='Folder needs re-approval (click “Re-enable folder”).';renderBackups();}});
