@@ -213,7 +213,7 @@ video{width:100%;max-height:300px;background:#000;border-radius:10px}
     <h2>1. Pre-select the status for this batch</h2>
     <div class="modes" id="modes"></div>
     <label style="display:block;margin-top:10px"><input type="checkbox" id="holdChk"> Hold scans and apply them together at the end of the batch (lets you review before anything changes)</label>
-    <p class="mut small" style="margin:6px 0 0">Every scan uses the selected status until you pick another. You can switch status mid-batch; each scan keeps the status that was selected when it was scanned.</p>
+    <p class="mut small" style="margin:6px 0 0"><b>Order is enforced: Sorted → Packed → Unpacked &amp; Verified.</b> A scan that breaks the order is refused with a warning. Every scan uses the selected status until you pick another. You can switch status mid-batch; each scan keeps the status that was selected when it was scanned.</p>
   </div>
   <div class="grid">
     <div class="card" style="min-width:0">
@@ -222,7 +222,7 @@ video{width:100%;max-height:300px;background:#000;border-radius:10px}
         <input id="scanIn" placeholder="Scan or type barcode, press Enter" autocomplete="off" style="flex:1;min-width:180px;font-size:16px">
         <button class="b" id="scanGo">Apply</button>
       </div>
-      <div class="row" style="margin:10px 0"><button class="b sec" id="camBtn">Start camera</button><label class="b sec" for="photoIn">Take photo of barcode</label><input id="photoIn" type="file" accept="image/*" capture="environment"><select id="camSel" style="display:none"></select><span class="mut small" id="camInfo"></span></div>
+      <div class="row" style="margin:10px 0"><button class="b sec" id="camBtn">Start camera</button><label class="b sec" for="photoIn">Take photo of barcode</label><input id="photoIn" type="file" accept="image/*" capture="environment"><label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="bulkChk"> Bulk scanning (read every barcode in view)</label><select id="camSel" style="display:none"></select><span class="mut small" id="camInfo"></span></div>
       <video id="vid" playsinline muted style="display:none"></video>
       <canvas id="cv" style="display:none"></canvas>
       <div id="result"></div>
@@ -343,7 +343,8 @@ function matchSym(r,i,allowed){
   }
   return be<2.2?best:-1;
 }
-function runsDecode(r){
+function runsDecode(r,all){
+  const found=[];
   for(let i=0;i+6<=r.length;i+=2){
     const st=matchSym(r,i,[103,104,105]);if(st<0)continue;
     const vals=[st];let pos=i+6,ok=false;
@@ -362,11 +363,11 @@ function runsDecode(r){
       if(set==='C'){if(v<100)out+=String(v).padStart(2,'0');else if(v===100)set='B';else if(v===101)set='A';}
       else{if(v===99)set='C';else if(v===100)set='B';else if(v===101)set='A';else if(v<96)out+=String.fromCharCode(set==='A'?(v<64?v+32:v-64):v+32);}
     }
-    if(out)return out;
+    if(out){if(!all)return out;found.push(out);i=pos-2;}
   }
-  return null;
+  return all?found:null;
 }
-function lineDecode(gray,w){
+function lineDecode(gray,w,all){
   // adaptive threshold -> run lengths
   const win=Math.max(31,(w/8)|0);
   const pre=new Float32Array(w+1);for(let i=0;i<w;i++)pre[i+1]=pre[i]+gray[i];
@@ -376,19 +377,21 @@ function lineDecode(gray,w){
   for(let i=1;i<w;i++){if(bin[i]===cur)len++;else{runs.push(len);cur=bin[i];len=1;}}
   runs.push(len);
   if(first===0)runs.shift(); // start with a bar
-  if(runs.length<20)return null;
+  if(runs.length<20)return all?[]:null;
+  if(all)return runsDecode(runs,true).concat(runsDecode(runs.slice().reverse(),true));
   return runsDecode(runs)||runsDecode(runs.slice().reverse());
 }
-function imageDecode(data,w,h,dense){
-  const gray=new Float32Array(w);
+function imageDecode(data,w,h,dense,all){
+  const gray=new Float32Array(w);const set=new Set();
   let ys=[.5,.42,.58,.34,.66,.26,.74,.18,.82,.5,.46,.54,.38,.62];
   if(dense){ys=[];for(let f=.05;f<=.96;f+=.025)ys.push(f);}
   for(const f of ys){
     const y=Math.floor(h*f);
     for(let x=0;x<w;x++){let s=0;for(let dy=-1;dy<=1;dy++){const o=(Math.min(h-1,Math.max(0,y+dy))*w+x)*4;s+=0.299*data[o]+0.587*data[o+1]+0.114*data[o+2];}gray[x]=s/3;}
-    const t=lineDecode(gray,w);if(t)return t;
+    if(all){lineDecode(gray,w,true).forEach(c=>set.add(c));}
+    else{const t=lineDecode(gray,w);if(t)return t;}
   }
-  return null;
+  return all?[...set]:null;
 }
 
 /* ================= tiny XLSX reader / writer (uses JSZip) ================= */
@@ -850,10 +853,11 @@ async function setStatus(u,m,t){
   const key=await idb.put('log',entry);if(key!=null)entry.k=key;
   return prev;
 }
-function warnFor(prev,m){
-  if(RANK[m]<RANK[prev])return `Moved backwards from “${prev}”.`;
-  if(prev===''&&m==='Unpacked & Verified')return 'This panel was never marked Packed.';
-  return '';
+const NEXT={'':'Sorted','Sorted':'Packed','Packed':'Unpacked & Verified'};
+function seqProblem(prev,m){
+  if(NEXT[prev]===m)return '';
+  if(RANK[m]<RANK[prev])return `Out of sequence: this panel is already “${prev}”. It cannot go back to “${m}”.`;
+  return `Out of sequence: this panel is “${prev||'Pending'}”. It must be marked “${NEXT[prev]}” before “${m}”.`;
 }
 function refreshViews(){renderTiles();renderRecent();renderGroup();applyFilter(true);renderBatch();}
 async function applyScan(raw){
@@ -862,20 +866,41 @@ async function applyScan(raw){
   if(!u&&/^\d+$/.test(id)){const n=+id;u=units.find(x=>x.sr===n&&x.of===1);}
   if(!u){beep(false);R.innerHTML=`<div class="result bad"><div class="big">Unknown barcode</div>“${esc(id)}” is not in the list.</div>`;bpush(id,mode,'unknown','Not in list');logAct('Scan rejected',`${id} not in list`);return;}
   const prev=u.status||'';
-  if(hold){
-    if(batch.some(b=>b.staged&&b.id===u.id)){beep(false);R.innerHTML=`<div class="result warn"><div class="big">${esc(u.id)} — already in this batch</div>Scanned twice; counted once.</div>`;return;}
-    if(prev===mode){beep(false);R.innerHTML=`<div class="result warn"><div class="big">${esc(u.id)} — already ${esc(mode)}</div>Recorded ${fdt(u.at)}. Not added to the batch.${infoKV(u)}</div>`;bpush(u.id,mode,'same','Already '+mode);return;}
-    const w=warnFor(prev,mode);
-    logAct('Scan queued',`${u.id} → ${mode}`);beep(true);bpush(u.id,mode,w?'warn':'ok',w||('Pending → '+mode).replace('Pending',prev||'Pending'),true);
-    R.innerHTML=`<div class="result ${w?'warn':'ok'}"><div class="big">${esc(u.id)} added to batch → ${esc(mode)}</div>${w?esc(w)+'<br>':''}${infoKV(u)}</div>`;
+  const lastStaged=hold?[...batch].reverse().find(b=>b.staged&&b.id===u.id):null;
+  const eff=lastStaged?lastStaged.mode:prev;
+  if(eff===mode){
+    beep(false);
+    const why=lastStaged?'already in this batch as '+mode:'already '+mode;
+    R.innerHTML=`<div class="result warn"><div class="big">${esc(u.id)} — ${esc(why)}</div>${lastStaged?'Counted once.':'Recorded '+fdt(u.at)+'. No change made.'}${infoKV(u)}</div>`;
+    if(!lastStaged)bpush(u.id,mode,'same','Already '+mode);
     return;
   }
-  if(prev===mode){beep(false);R.innerHTML=`<div class="result warn"><div class="big">${esc(u.id)} — already ${esc(mode)}</div>Recorded ${fdt(u.at)}. No change made.${infoKV(u)}</div>`;bpush(u.id,mode,'same','Already '+mode);return;}
-  const w=warnFor(prev,mode);
+  const sq=seqProblem(eff,mode);
+  if(sq){
+    beep(false);
+    R.innerHTML=`<div class="result bad"><div class="big">⚠ ${esc(u.id)} — wrong sequence</div>${esc(sq)}<br><b>Nothing was changed.</b>${infoKV(u)}<div style="margin-top:8px"><button class="b danger small" data-ov="${esc(u.id)}" data-m="${esc(mode)}" style="padding:4px 12px">Override and apply anyway…</button></div></div>`;
+    bpush(u.id,mode,'seq',sq);logAct('Sequence warning',`${u.id}: ${eff||'Pending'} → ${mode} blocked`);
+    return;
+  }
+  if(hold){
+    logAct('Scan queued',`${u.id} → ${mode}`);beep(true);bpush(u.id,mode,'ok',(eff||'Pending')+' → '+mode,true);
+    R.innerHTML=`<div class="result ok"><div class="big">${esc(u.id)} added to batch → ${esc(mode)}</div>${infoKV(u)}</div>`;
+    return;
+  }
   await setStatus(u,mode,Date.now());
   beep(true);
-  bpush(u.id,mode,w?'warn':'ok',w||'Applied');batch[batch.length-1].done=true;
-  R.innerHTML=`<div class="result ${w?'warn':'ok'}"><div class="big">${esc(u.id)} → ${esc(mode)}</div>${w?esc(w)+'<br>':''}${infoKV(u)}</div>`;
+  bpush(u.id,mode,'ok','Applied');batch[batch.length-1].done=true;
+  R.innerHTML=`<div class="result ok"><div class="big">${esc(u.id)} → ${esc(mode)}</div>${infoKV(u)}</div>`;
+  refreshViews();
+}
+async function overrideScan(id,m){
+  const u=byId.get(id);if(!u)return;
+  if(!confirm(`Override the sequence for ${id}?\n\nIt is “${u.status||'Pending'}” and you are forcing “${m}”. This will be recorded in the activity log.`))return;
+  const prev=u.status||'';
+  await setStatus(u,m,Date.now());
+  logAct('Sequence override',`${id}: ${prev||'Pending'} → ${m} applied by override`);
+  bpush(id,m,'warn','Override: '+(prev||'Pending')+' → '+m);batch[batch.length-1].done=true;
+  $('#result').innerHTML=`<div class="result warn"><div class="big">${esc(id)} → ${esc(m)} (override)</div>Sequence was overridden and logged.</div>`;
   refreshViews();
 }
 async function commitBatch(){
@@ -898,8 +923,8 @@ function batchCSV(){
 function renderBatch(){
   const n=k=>batch.filter(b=>b.res===k).length;
   const pend=batch.filter(b=>b.staged).length;
-  $('#bTiles').innerHTML=`<div class="tile tot"><b>${batch.length}</b><span>Scans in batch</span></div><div class="tile UV"><b>${n('ok')+n('warn')}</b><span>${hold?'Valid':'Applied'}</span></div><div class="tile Packed"><b>${n('same')}</b><span>Already had status</span></div><div class="tile"><b>${n('unknown')}</b><span>Unknown</span></div>`;
-  $('#bBody').innerHTML=batch.slice(-100).reverse().map(b=>`<tr><td>${fdt(b.t)}</td><td><b>${esc(b.id)}</b></td><td><span class="pill ${cls(b.mode)}">${esc(b.mode)}</span></td><td>${b.staged?'<b style="color:var(--warn)">Waiting</b>':b.res==='ok'?'<span style="color:var(--ok)">✔ '+esc(b.msg)+'</span>':b.res==='warn'?'<span style="color:var(--warn)">⚠ '+esc(b.msg)+'</span>':b.res==='unknown'?'<span style="color:var(--bad)">✖ '+esc(b.msg)+'</span>':'<span class="mut">'+esc(b.msg)+'</span>'}</td></tr>`).join('')||'<tr><td colspan="4" class="mut">Nothing scanned in this batch yet</td></tr>';
+  $('#bTiles').innerHTML=`<div class="tile tot"><b>${batch.length}</b><span>Scans in batch</span></div><div class="tile UV"><b>${n('ok')+n('warn')}</b><span>${hold?'Valid':'Applied'}</span></div><div class="tile Packed"><b>${n('same')}</b><span>Already had status</span></div><div class="tile"><b>${n('unknown')}</b><span>Unknown</span></div><div class="tile" style="border-top-color:var(--bad)"><b>${n('seq')}</b><span>Out of sequence</span></div>`;
+  $('#bBody').innerHTML=batch.slice(-100).reverse().map(b=>`<tr><td>${fdt(b.t)}</td><td><b>${esc(b.id)}</b></td><td><span class="pill ${cls(b.mode)}">${esc(b.mode)}</span></td><td>${b.staged?'<b style="color:var(--warn)">Waiting</b>':b.res==='ok'?'<span style="color:var(--ok)">✔ '+esc(b.msg)+'</span>':b.res==='warn'?'<span style="color:var(--warn)">⚠ '+esc(b.msg)+'</span>':(b.res==='unknown'||b.res==='seq')?'<span style="color:var(--bad)">✖ '+esc(b.msg)+'</span>':'<span class="mut">'+esc(b.msg)+'</span>'}</td></tr>`).join('')||'<tr><td colspan="4" class="mut">Nothing scanned in this batch yet</td></tr>';
   $('#btnCommit').style.display=hold?'':'none';$('#btnCommit').disabled=!pend;$('#btnCommit').textContent=`Apply ${pend} scan${pend===1?'':'s'} to status`;
   $('#btnCsv').disabled=!batch.length;
 }
@@ -956,29 +981,39 @@ async function photoDecode(file){
       const cv=document.createElement('canvas');cv.width=W;cv.height=H;const x=cv.getContext('2d',{willReadFrequently:true});
       x.fillStyle='#fff';x.fillRect(0,0,W,H);
       if(rot){x.translate(W,0);x.rotate(Math.PI/2);x.drawImage(bmp,0,0,bmp.width*sc,bmp.height*sc);}else x.drawImage(bmp,0,0,W,H);
-      if(nat){try{const r=await nat.detect(cv);if(r.length)return r[0].rawValue;}catch(e){}}
-      const t=imageDecode(x.getImageData(0,0,W,H).data,W,H,true);if(t)return t;
+      if(nat){try{const r=await nat.detect(cv);if(r.length)return [...new Set(r.map(q=>q.rawValue))];}catch(e){}}
+      const t=imageDecode(x.getImageData(0,0,W,H).data,W,H,true,true);if(t.length)return t;
     }
   }
-  return null;
+  return [];
 }
 function stopCam(){
   clearInterval(scanTimer);scanTimer=null;
   if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
   $('#vid').style.display='none';$('#camBtn').textContent='Start camera';
 }
-let busy=false;
+let busy=false,bulk=false,coolUntil=0,seenAt={},lastWarnAt=0;
+function multiWarn(n){const now=Date.now();if(now-lastWarnAt<1500)return;lastWarnAt=now;$('#result').innerHTML=`<div class="result warn"><div class="big">${n} different barcodes in view</div>Nothing was scanned. Point the camera at a single sticker, or tick <b>Bulk scanning</b> to read every barcode in view.</div>`;}
 async function camTick(){
   if(busy)return;const v=$('#vid');if(!v.videoWidth)return;busy=true;
   try{
-    let code=null;
-    if(detector){const r=await detector.detect(v);if(r.length)code=r[0].rawValue;}
-    if(!code){
+    let codes=[];
+    if(detector){const r=await detector.detect(v);codes=[...new Set(r.map(q=>q.rawValue))];}
+    if(!codes.length){
       const cv=$('#cv'),w=Math.min(960,v.videoWidth),h=Math.round(v.videoHeight*w/v.videoWidth);cv.width=w;cv.height=h;
       const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(v,0,0,w,h);
-      code=imageDecode(ctx.getImageData(0,0,w,h).data,w,h);
+      codes=imageDecode(ctx.getImageData(0,0,w,h).data,w,h,false,true);
     }
-    if(code){const now=Date.now();if(code!==lastCode||now-lastAt>2500){lastCode=code;lastAt=now;await applyScan(code);}else lastAt=now;}
+    const now=Date.now();
+    if(codes.length){
+      if(bulk){
+        for(const c of codes){const fresh=!(seenAt[c]&&now-seenAt[c]<2500);seenAt[c]=now;if(fresh)await applyScan(c);}
+      }else if(codes.length>1){multiWarn(codes.length);}
+      else if(now>=coolUntil){
+        const c=codes[0];const fresh=!(seenAt[c]&&now-seenAt[c]<2500);seenAt[c]=now;
+        if(fresh){await applyScan(c);coolUntil=Date.now()+1200;}
+      }
+    }
   }catch(e){}
   busy=false;
 }
@@ -1093,12 +1128,14 @@ document.addEventListener('DOMContentLoaded',async()=>{
   $('#scanGo').onclick=()=>{applyScan($('#scanIn').value);$('#scanIn').value='';$('#scanIn').focus();};
   $('#photoIn').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
     $('#result').innerHTML='<div class="result warn"><div class="big">Reading photo…</div></div>';
-    try{const code=await photoDecode(f);if(code)await applyScan(code);else{beep(false);$('#result').innerHTML='<div class="result bad"><div class="big">Could not read a barcode in that photo</div>Retake it closer, with the barcode sharp, flat and filling most of the width, with good light.</div>';logAct('Photo scan failed','no barcode found');}}
+    try{const codes=await photoDecode(f);if(codes.length>1&&!bulk){beep(false);multiWarn(codes.length);}else if(codes.length){for(const c of codes)await applyScan(c);}else{beep(false);$('#result').innerHTML='<div class="result bad"><div class="big">Could not read a barcode in that photo</div>Retake it closer, with the barcode sharp, flat and filling most of the width, with good light.</div>';logAct('Photo scan failed','no barcode found');}}
     catch(err){$('#result').innerHTML=`<div class="result bad"><div class="big">Photo could not be read</div>${esc(err.message||err)}</div>`;}};
   $('#camBtn').onclick=()=>stream?stopCam():startCam();
   $('#camSel').onchange=()=>{stopCam();startCam();};
   $('#btnBackupNow').onclick=()=>makeBackup('manual');$('#btnFolder').onclick=pickFolder;$('#btnReenable').onclick=reenableFolder;$('#btnActCsv').onclick=activityCSV;$('#bkBody').onclick=backupAction;
+  $('#result').addEventListener('click',e=>{const t=e.target.closest('[data-ov]');if(t)overrideScan(t.dataset.ov,t.dataset.m);});
   $('#btnUndo').onclick=undoLast;$('#btnCommit').onclick=commitBatch;$('#btnNewBatch').onclick=newBatch;$('#btnCsv').onclick=batchCSV;
+  $('#bulkChk').checked=!!meta.bulk;bulk=!!meta.bulk;$('#bulkChk').onchange=e=>{bulk=e.target.checked;meta.bulk=bulk;idb.put('meta',{k:'bulk',v:bulk});logAct('Bulk scanning',bulk?'on — every barcode in view is scanned':'off — one barcode at a time');};
   $('#holdChk').checked=!!meta.hold;hold=!!meta.hold;$('#holdChk').onchange=e=>{hold=e.target.checked;meta.hold=hold;logAct('Batch mode',hold?'hold scans until applied':'apply immediately');idb.put('meta',{k:'hold',v:hold});renderBatch();};
   $('#grpBy').onchange=renderGroup;
   $('#btnExport').onclick=exportExcel;
