@@ -5,7 +5,7 @@ Barcode generation, 100 x 50 mm sticker printing and scan-status tracking for th
 * `web/Panel_Barcode_Tracker.html` – the standalone browser version (one offline file)
 * everything else – the Android app that wraps the same page (`app/src/main/assets/index.html` is a copy of it)
 
-Pushing to this repository runs **Actions → Build APK**; the debug APK is attached to the run as an artifact.
+Every push to `main` runs **Actions → Build APK**. The finished APK is published at **Releases → Latest APK** (download `PanelBarcodeTracker.apk` straight to the phone). Builds are signed with a fixed key, so a new APK installs over the old one and keeps your data.
 
 ## Android app (WebView wrapper)
 
