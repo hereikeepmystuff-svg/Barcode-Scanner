@@ -127,6 +127,15 @@ body.sv #mPop.show{display:block;position:fixed;left:18px;right:18px;top:50%;tra
 #mBar .sw input{width:22px;height:22px}
 #mApply{width:100%;font-size:18px;padding:14px;margin-top:6px}
 body.sv[data-stage=done] #mDone{display:block}
+#mReview{display:none}
+body.sv[data-stage=review] #mReview{display:block}
+#mReview h2{font-size:20px;margin:4px 0 4px}
+#mRvList{margin:10px 0}
+.rvrow{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line)}
+.rvrow .inf{flex:1;min-width:0}.rvrow .inf b{font-size:17px}
+.rvrow .inf div{font-size:12px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rvrow button{border:1px solid var(--bad);background:#fff;color:var(--bad);border-radius:8px;padding:10px 14px;font:inherit;font-weight:650}
+#mReview .b.big{display:block;width:100%;font-size:17px;padding:14px;margin-top:10px;text-align:center}
 #mDone h2{font-size:20px;margin:4px 0 12px}
 #mDone .b{display:block;width:100%;font-size:17px;padding:14px;margin-top:12px;text-align:center}
 #holdPop{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.65);align-items:center;justify-content:center;padding:18px}
@@ -335,10 +344,14 @@ body.sv[data-stage=done] #mDone{display:block}
 <div id="mPop"></div>
 <div id="holdPop"><div class="box"><div class="big" id="hpTitle"></div><div id="hpBody" style="margin-top:10px;font-size:16px"></div><button class="b" id="hpOk">OK, understood</button></div></div>
 <div style="padding:12px">
-  <div id="mMode"><h2>What are you doing?</h2><div id="mModes" style="display:flex;flex-direction:column;gap:14px"></div></div>
+  <div id="mMode"><h2>What are you doing?</h2><div id="mModes" style="display:flex;flex-direction:column;gap:14px"></div>
+    <div class="note" style="margin:6px 0 0"><div class="small mut">Excel list in use</div><div id="mListInfo" style="font-weight:650;margin:2px 0 8px;word-break:break-all"></div><label class="b sec" for="scanXlsx" style="display:block;text-align:center">Import / update Excel list</label></div></div>
+  <div id="mReview"><h2>Review scanned items</h2><div class="small mut" id="mRvInfo"></div><div id="mRvList"></div>
+    <button class="b big" id="mRvApply">Apply</button><button class="b sec big" id="mRvBack">← Back to scanning</button></div>
   <div id="mDone"><h2>Scanning finished</h2><div class="tiles" id="mDoneTiles"></div>
     <button class="b" id="mReport">Generate Excel report</button><div class="small mut" id="mRepMsg" style="margin-top:6px"></div>
-    <button class="b sec" id="mMore">Scan more</button></div>
+    <button class="b sec" id="mMore">Scan more</button>
+    <label class="b sec" for="scanXlsx" style="display:block;text-align:center;margin-top:12px;font-size:17px;padding:14px">Import / update Excel list</label></div>
 </div>
 <div id="mCam"><div id="mView"><div class="aim"></div><button id="mChip"></button><div id="mCount"></div><div id="mProb"></div><div id="mToast"></div></div>
   <div id="mBar"><label class="sw"><input type="checkbox" id="mBulk"> Bulk scanning (read every barcode in view)</label>
@@ -1230,6 +1243,7 @@ function setStage(s){
   if(s==='mode')renderMModes();
   if(s==='cam'){renderMChip();syncM();$('#mProb').style.display='none';startCam();}
   if(s==='done')renderDone();
+  if(s==='review')renderReview();
   window.scrollTo(0,0);
 }
 function mobileSync(){
@@ -1240,6 +1254,7 @@ function mobileSync(){
   if(stage==='mode')renderMModes();
 }
 function renderMModes(){
+  $('#mListInfo').textContent=units.length?`${(meta.source&&meta.source.file)||'saved list'} · ${units.filter(u=>!u.flag).length.toLocaleString()} active barcodes`:'None loaded';
   const act=units.filter(u=>!u.flag),reached=r=>act.filter(u=>RANK[u.status||'']>=r).length;
   $('#mModes').innerHTML=[['Sorted','Sort','Sorted',1],['Packed','Pack','Packed',2],['Unpacked & Verified','Unpack & verify','UV',3]].map(([k,l,c,r])=>`<button class="mbig ${c}" data-m="${k}">${l}<small>${reached(r).toLocaleString()} of ${act.length.toLocaleString()} done</small></button>`).join('');
 }
@@ -1251,7 +1266,27 @@ function syncM(){
   const pend=batch.filter(b=>b.staged).length,ok=batch.filter(b=>b.res==='ok'||b.res==='warn').length;
   $('#mBulk').checked=bulk;$('#mHold').checked=hold;
   $('#mCount').textContent=(hold?pend+' waiting':ok+' scanned');
-  const a=$('#mApply');a.textContent=hold?`Apply ${pend} scan${pend===1?'':'s'}`:'Finish';a.disabled=hold&&!pend;
+  const rv=reviewList().length;const a=$('#mApply');a.textContent=`Review ${rv} scan${rv===1?'':'s'}`;a.disabled=!rv;
+}
+function reviewList(){return batch.map((b,i)=>({b,i})).filter(x=>x.b.staged||(x.b.done&&(x.b.res==='ok'||x.b.res==='warn')));}
+function renderReview(){
+  const L=reviewList().reverse(),rej=batch.filter(b=>!b.staged&&!b.done).length;
+  $('#mRvInfo').innerHTML=`${L.length} scan${L.length===1?'':'s'} ${hold?'waiting to be applied':'applied'}${rej?` · ${rej} rejected scan${rej===1?'':'s'} (not included)`:''}. Remove any that were scanned by mistake.`;
+  $('#mRvList').innerHTML=L.map(({b,i})=>{const u=byId.get(b.id);return `<div class="rvrow"><div class="inf"><b>${esc(b.id)}</b> <span class="pill ${cls(b.mode)}">${esc(b.mode)}</span><div>${u?esc(u.size)+' mm · '+esc(u.code)+' · '+esc(u.unit)+' / '+esc(u.room):''}</div></div><button data-rm="${i}">Remove</button></div>`;}).join('')||'<div class="mut" style="padding:16px 0">Nothing left to review.</div>';
+  const n=L.length;$('#mRvApply').textContent=hold?`Apply ${n} scan${n===1?'':'s'}`:'Done';$('#mRvApply').disabled=hold&&!n;
+}
+async function removeScan(i){
+  const b=batch[i];if(!b)return;
+  if(b.staged){batch.splice(i,1);logAct('Scan removed',`${b.id} removed from batch before applying`);}
+  else{
+    const u=byId.get(b.id);let ok=false;
+    for(let k=log.length-1;k>=0;k--){const l=log[k];if(l.id!==b.id)continue;
+      if(l.to===b.mode&&u){u.status=l.from;u.at=null;const {_h,size,...rec}=u;await idb.put('units',rec);if(l.k!==undefined)await idb.del('log',l.k);log.splice(k,1);dirty=true;logAct('Scan removed',`${b.id} reverted to ${l.from||'Pending'}`);ok=true;}
+      break;}
+    if(!ok){alert('This scan cannot be removed because the panel was scanned again afterwards.');return;}
+    batch.splice(i,1);
+  }
+  refreshViews();renderReview();
 }
 function renderDone(){
   $('#mDoneTiles').innerHTML=$('#bTiles').innerHTML;$('#mRepMsg').textContent='';
@@ -1271,7 +1306,7 @@ function updateGate(){
   $('#scanMain').style.display=has?'':'none';
   $('#gateTitle').textContent=has?'Scanning against: '+((meta.source&&meta.source.file)||'saved list'):'Load the Excel list to scan against';
   $('#gateText').innerHTML=has?`${units.length.toLocaleString()} barcodes${meta.source?' · loaded '+fdt(meta.source.at):''}. This list stays saved on this device until you load a different file.`:'Scanning needs the list so each barcode can be matched to its panel. Choose either the <b>original panel list</b> or a <b>Barcode Register</b> exported from this app (it also brings in existing statuses). It is saved on this device and reused until you load a different file.';
-  $('#gateBtn').textContent=has?'Load a different Excel…':'Choose Excel file…';
+  $('#gateBtn').textContent=has?'Import / update Excel list…':'Choose Excel file…';
   if(!has)stopCam();
 }
 function renderRevs(){$('#revBody').innerHTML=(meta.revs||[]).slice().reverse().map(r=>`<tr><td><b>Rev ${r.n}</b></td><td>${fdt(r.at)}</td><td>${esc(r.file)}</td><td>${r.added}</td><td>${r.removed}</td><td>${r.changed}</td><td>${r.mode==='hold'?'On hold':r.mode==='cancelled'?'Cancelled':''}</td></tr>`).join('')||'<tr><td colspan="7" class="mut">No revisions yet — the first list is the original.</td></tr>';}
@@ -1298,7 +1333,7 @@ document.addEventListener('DOMContentLoaded',async()=>{
     catch(err){logAct('Excel upload failed',err.message||String(err));$(target).innerHTML=`<div class="note bad">${esc(err.message||err)}</div>`;}
     e.target.value='';
   };
-  $('#xlsxIn').onchange=onFile('#importPreview');$('#scanXlsx').onchange=onFile('#scanImport');
+  $('#xlsxIn').onchange=onFile('#importPreview');{const h=onFile('#scanImport');$('#scanXlsx').onchange=e=>{if(SVon&&e.target.files[0])setStage('load');return h(e);};}
   ['#fQ','#fUnit','#fRoom','#fStatus'].forEach(s=>$(s).addEventListener(s==='#fQ'?'input':'change',()=>{clearTimeout(applyFilter.t);applyFilter.t=setTimeout(()=>{applyFilter();},120);}));
   $('#tbody').onclick=e=>{const tr=e.target.closest('tr[data-id]');if(tr)select(tr.dataset.id);};
   $('#pgPrev').onclick=()=>{page--;renderTable();};$('#pgNext').onclick=()=>{page++;renderTable();};
@@ -1348,7 +1383,10 @@ document.addEventListener('DOMContentLoaded',async()=>{
   $('#mGateBack').onclick=()=>setStage('mode');
   $('#mModes').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;mode=b.dataset.m;logAct('Status selected',mode);meta.mode=mode;idb.put('meta',{k:'mode',v:mode});renderModes();setStage('cam');};
   $('#mChip').onclick=()=>setStage('mode');
-  $('#mApply').onclick=async()=>{if(hold&&batch.some(b=>b.staged))await commitBatch();setStage('done');};
+  $('#mApply').onclick=()=>setStage('review');
+  $('#mRvBack').onclick=()=>setStage('cam');
+  $('#mRvList').onclick=e=>{const b=e.target.closest('[data-rm]');if(b)removeScan(+b.dataset.rm);};
+  $('#mRvApply').onclick=async()=>{const bt=$('#mRvApply');bt.disabled=true;if(hold&&batch.some(b=>b.staged))await commitBatch();setStage('done');};
   $('#mReport').onclick=async()=>{const b=$('#mReport');b.disabled=true;b.textContent='Building report…';try{await exportExcel();$('#mRepMsg').textContent='Excel report created — find it in your Downloads.';}finally{b.disabled=false;b.textContent='Generate Excel report';}};
   $('#mMore').onclick=()=>{batch=[];renderBatch();setStage('mode');};
   SVon=TOUCH&&vp!=='full';document.body.classList.toggle('sv',SVon);placeVid();
