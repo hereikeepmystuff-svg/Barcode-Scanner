@@ -87,6 +87,48 @@ video{width:100%;max-height:300px;background:#000;border-radius:10px}
 .cuts .cell{outline:.12mm solid #888}
 #sheetBox{overflow:hidden;border:1px dashed var(--line);border-radius:8px;background:#e9ecf1;padding:10px;margin-top:10px}
 #sheetBox .sheet{box-shadow:0 1px 6px rgba(0,0,0,.25)}
+
+/* ---------- phone / tablet scanner view (same app, fewer elements) ---------- */
+#mTop,#mCam,#mMode,#mDone,#mProb,#mPop,#mMenu,#mToast{display:none}
+#mGateBack{display:none}
+body.sv{padding-top:56px;background:#fff}
+body.sv header,body.sv nav,body.sv main>section{display:none}
+body.sv main{padding:12px}
+body.sv #t-scan{display:block}
+body.sv #scanMain{display:none!important}
+body.sv #gate{display:none;margin:0;border:0;padding:4px 0}
+body.sv[data-stage=load] #gate{display:block}
+body.sv #mGateBack.has{display:inline-block;margin-top:12px}
+body.sv #gate .b{font-size:17px;padding:14px 18px;width:100%;text-align:center}
+body.sv #mTop{display:flex;position:fixed;top:0;left:0;right:0;height:56px;z-index:40;background:var(--acc);color:#fff;align-items:center;justify-content:space-between;padding:0 12px;padding-top:env(safe-area-inset-top)}
+#mTop .t1{font-weight:750;font-size:16px;line-height:1.15}#mTop .t2{font-size:13px;opacity:.85}
+#mMenuBtn{border:0;background:rgba(255,255,255,.18);color:#fff;font-size:22px;border-radius:8px;width:42px;height:38px}
+body.sv #mMenu.open{display:block;position:fixed;top:56px;right:8px;z-index:50;background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.25);overflow:hidden}
+#mMenu button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:#fff;padding:14px 18px;font:inherit;font-size:15px}
+body.sv[data-stage=mode] #mMode{display:flex;flex-direction:column;gap:14px;padding:6px 0}
+#mMode h2{margin:4px 0 0;font-size:20px}
+.mbig{border:0;border-radius:16px;padding:22px 16px;color:#fff;font:inherit;font-size:22px;font-weight:750;text-align:left;background:var(--s-pending)}
+.mbig small{display:block;font-size:13px;font-weight:500;opacity:.9;margin-top:2px}
+.mbig.Sorted{background:var(--s-sorted)}.mbig.Packed{background:var(--s-packed)}.mbig.UV{background:var(--s-ver)}
+body.sv[data-stage=cam] #mCam{display:flex;position:fixed;inset:0;padding-top:56px;background:#000;z-index:20;flex-direction:column}
+#mView{position:relative;flex:1;min-height:0;overflow:hidden;background:#000}
+#mView video{position:absolute;inset:0;width:100%;height:100%;max-height:none;object-fit:cover;border-radius:0}
+#mView .aim{position:absolute;left:8%;right:8%;top:30%;bottom:30%;border:2px dashed rgba(255,255,255,.7);border-radius:12px;pointer-events:none}
+#mChip{position:absolute;top:10px;left:10px;border:0;border-radius:99px;padding:8px 14px;color:#fff;font:inherit;font-weight:700;background:var(--s-pending);z-index:3}
+#mChip.Sorted{background:var(--s-sorted)}#mChip.Packed{background:var(--s-packed)}#mChip.UV{background:var(--s-ver)}
+#mCount{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;border-radius:99px;padding:8px 14px;font-weight:700;z-index:3}
+body.sv[data-stage=cam] #mToast.show{display:block}
+#mToast{position:absolute;left:10px;right:10px;bottom:10px;text-align:center;padding:10px 12px;border-radius:10px;font-weight:650;font-size:15px;pointer-events:none;z-index:3}
+#mToast.ok{background:var(--okbg);color:var(--ok)}#mToast.warn{background:var(--warnbg);color:var(--warn)}#mToast.bad{background:var(--badbg);color:var(--bad)}
+body.sv #mPop.show{display:block;position:fixed;left:18px;right:18px;top:50%;transform:translateY(-50%);z-index:60;border-radius:16px;padding:22px 18px;font-size:19px;font-weight:700;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.45);background:var(--badbg);color:var(--bad);border:3px solid var(--bad)}
+#mProb{position:absolute;left:10px;right:10px;top:56px;z-index:4;padding:12px;border-radius:10px;background:var(--badbg);color:var(--bad);font-size:14px}
+#mBar{background:#fff;padding:10px 14px calc(10px + env(safe-area-inset-bottom))}
+#mBar .sw{display:flex;gap:10px;align-items:center;padding:6px 0;font-size:15px}
+#mBar .sw input{width:22px;height:22px}
+#mApply{width:100%;font-size:18px;padding:14px;margin-top:6px}
+body.sv[data-stage=done] #mDone{display:block}
+#mDone h2{font-size:20px;margin:4px 0 12px}
+#mDone .b{display:block;width:100%;font-size:17px;padding:14px;margin-top:12px;text-align:center}
 </style>
 <style id="pageStyle"></style>
 </head>
@@ -94,6 +136,7 @@ video{width:100%;max-height:300px;background:#000;border-radius:10px}
 <header>
   <h1>Panel Barcode Tracker</h1>
   <span class="sub" id="hdrInfo">No data loaded</span>
+  <button class="b sec" id="hdrSV" style="display:none;margin-left:auto;padding:5px 12px">Scanner view</button>
 </header>
 <nav id="nav">
   <button data-t="import" class="on">1 · Import &amp; Generate</button>
@@ -187,7 +230,7 @@ video{width:100%;max-height:300px;background:#000;border-radius:10px}
         <h2>Sticker text</h2>
         <div class="row">
           <label>Top heading (project name) <input id="sProj1" style="width:170px"></label>
-          <label>Left text <input id="sLeft" style="width:110px"></label>
+          <label>Tower name (left text) <input id="sLeft" style="width:110px"></label>
         </div>
         <div class="row" style="margin-top:8px">
           <label>Code + Panel Size max font (pt) <input id="sSize" type="number" min="6" max="30" step="0.5" style="width:70px"></label>
@@ -207,6 +250,7 @@ video{width:100%;max-height:300px;background:#000;border-radius:10px}
     <p id="gateText" class="mut small" style="margin-top:0"></p>
     <div class="row"><label class="b" for="scanXlsx" id="gateBtn">Choose Excel file…</label><input id="scanXlsx" type="file" accept=".xlsx,.xlsm"></div>
     <div id="scanImport"></div>
+    <button class="b" id="mGateBack">Continue to scanning →</button>
   </div>
   <div id="scanMain">
   <div class="card">
@@ -223,8 +267,8 @@ video{width:100%;max-height:300px;background:#000;border-radius:10px}
         <button class="b" id="scanGo">Apply</button>
       </div>
       <div class="row" style="margin:10px 0"><button class="b sec" id="camBtn">Start camera</button><label class="b sec" for="photoIn">Take photo of barcode</label><input id="photoIn" type="file" accept="image/*" capture="environment"><label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="bulkChk"> Bulk scanning (read every barcode in view)</label><select id="camSel" style="display:none"></select><span class="mut small" id="camInfo"></span></div>
-      <video id="vid" playsinline muted style="display:none"></video>
-      <canvas id="cv" style="display:none"></canvas>
+      <div id="camHost"><video id="vid" playsinline muted style="display:none"></video>
+      <canvas id="cv" style="display:none"></canvas></div>
       <div id="result"></div>
     </div>
     <div class="card" style="min-width:0">
@@ -271,6 +315,22 @@ video{width:100%;max-height:300px;background:#000;border-radius:10px}
   </div>
 </section>
 </main>
+
+<!-- ============ PHONE / TABLET SCANNER VIEW (same app; shown instead of the full layout on touch devices) ============ -->
+<div id="mTop"><div><div class="t1" id="mProj"></div><div class="t2" id="mTower"></div></div><button id="mMenuBtn" aria-label="Menu">⋯</button></div>
+<div id="mMenu"><button id="mmList">Change Excel list</button><button id="mmReport">Generate Excel report</button><button id="mmFull">Open full app (import, stickers, backups…)</button></div>
+<div id="mPop"></div>
+<div style="padding:12px">
+  <div id="mMode"><h2>What are you doing?</h2><div id="mModes" style="display:flex;flex-direction:column;gap:14px"></div></div>
+  <div id="mDone"><h2>Scanning finished</h2><div class="tiles" id="mDoneTiles"></div>
+    <button class="b" id="mReport">Generate Excel report</button><div class="small mut" id="mRepMsg" style="margin-top:6px"></div>
+    <button class="b sec" id="mMore">Scan more</button></div>
+</div>
+<div id="mCam"><div id="mView"><div class="aim"></div><button id="mChip"></button><div id="mCount"></div><div id="mProb"></div><div id="mToast"></div></div>
+  <div id="mBar"><label class="sw"><input type="checkbox" id="mBulk"> Bulk scanning (read every barcode in view)</label>
+    <label class="sw"><input type="checkbox" id="mHold"> Hold scans until confirmed, then apply together</label>
+    <button class="b" id="mApply">Finish</button></div></div>
+
 <div id="printRoot"></div>
 
 <script>/*!
@@ -865,7 +925,7 @@ async function applyScan(raw){
   const id=String(raw||'').trim();if(!id)return;
   let u=byId.get(id);const R=$('#result');
   if(!u&&/^\d+$/.test(id)){const n=+id;u=units.find(x=>x.sr===n&&x.of===1);}
-  if(!u){beep(false);R.innerHTML=`<div class="result bad"><div class="big">Unknown barcode</div>“${esc(id)}” is not in the list.</div>`;bpush(id,mode,'unknown','Not in list');logAct('Scan rejected',`${id} not in list`);return;}
+  if(!u){beep(false);R.innerHTML=`<div class="result bad"><div class="big">Unknown barcode</div>“${esc(id)}” is not in the list.</div>`;mnote('bad','Unknown barcode '+esc(id));bpush(id,mode,'unknown','Not in list');logAct('Scan rejected',`${id} not in list`);return;}
   const prev=u.status||'';
   const lastStaged=hold?[...batch].reverse().find(b=>b.staged&&b.id===u.id):null;
   const eff=lastStaged?lastStaged.mode:prev;
@@ -873,6 +933,7 @@ async function applyScan(raw){
     beep(false);
     const why=lastStaged?'already in this batch as '+mode:'already '+mode;
     R.innerHTML=`<div class="result warn"><div class="big">${esc(u.id)} — ${esc(why)}</div>${lastStaged?'Counted once.':'Recorded '+fdt(u.at)+'. No change made.'}${infoKV(u)}</div>`;
+    mnote('warn',esc(u.id)+(lastStaged?' already scanned in this batch':' is already '+esc(mode)));
     if(!lastStaged)bpush(u.id,mode,'same','Already '+mode);
     return;
   }
@@ -880,16 +941,17 @@ async function applyScan(raw){
   if(sq){
     beep(false);
     R.innerHTML=`<div class="result bad"><div class="big">⚠ ${esc(u.id)} — wrong sequence</div>${esc(sq)}<br><b>Nothing was changed.</b>${infoKV(u)}<div style="margin-top:8px"><button class="b danger small" data-ov="${esc(u.id)}" data-m="${esc(mode)}" style="padding:4px 12px">Override and apply anyway…</button></div></div>`;
+    mnote('bad','⚠ '+esc(u.id)+' — wrong sequence<br><span style="font-weight:500;font-size:16px">'+esc(sq)+'</span>',true);
     bpush(u.id,mode,'seq',sq);logAct('Sequence warning',`${u.id}: ${eff||'Pending'} → ${mode} blocked`);
     return;
   }
   if(hold){
-    logAct('Scan queued',`${u.id} → ${mode}`);beep(true);bpush(u.id,mode,'ok',(eff||'Pending')+' → '+mode,true);
+    logAct('Scan queued',`${u.id} → ${mode}`);beep(true);mnote('ok','✓ '+esc(u.id)+' added');bpush(u.id,mode,'ok',(eff||'Pending')+' → '+mode,true);
     R.innerHTML=`<div class="result ok"><div class="big">${esc(u.id)} added to batch → ${esc(mode)}</div>${infoKV(u)}</div>`;
     return;
   }
   await setStatus(u,mode,Date.now());
-  beep(true);
+  beep(true);mnote('ok','✓ '+esc(u.id)+' → '+esc(mode));
   bpush(u.id,mode,'ok','Applied');batch[batch.length-1].done=true;
   R.innerHTML=`<div class="result ok"><div class="big">${esc(u.id)} → ${esc(mode)}</div>${infoKV(u)}</div>`;
   refreshViews();
@@ -928,6 +990,7 @@ function renderBatch(){
   $('#bBody').innerHTML=batch.slice(-100).reverse().map(b=>`<tr><td>${fdt(b.t)}</td><td><b>${esc(b.id)}</b></td><td><span class="pill ${cls(b.mode)}">${esc(b.mode)}</span></td><td>${b.staged?'<b style="color:var(--warn)">Waiting</b>':b.res==='ok'?'<span style="color:var(--ok)">✔ '+esc(b.msg)+'</span>':b.res==='warn'?'<span style="color:var(--warn)">⚠ '+esc(b.msg)+'</span>':(b.res==='unknown'||b.res==='seq')?'<span style="color:var(--bad)">✖ '+esc(b.msg)+'</span>':'<span class="mut">'+esc(b.msg)+'</span>'}</td></tr>`).join('')||'<tr><td colspan="4" class="mut">Nothing scanned in this batch yet</td></tr>';
   $('#btnCommit').style.display=hold?'':'none';$('#btnCommit').disabled=!pend;$('#btnCommit').textContent=`Apply ${pend} scan${pend===1?'':'s'} to status`;
   $('#btnCsv').disabled=!batch.length;
+  syncM();
 }
 async function undoLast(){
   const l=log[log.length-1];if(!l)return;
@@ -942,7 +1005,7 @@ async function undoLast(){
 /* camera */
 let stream=null,scanTimer=null,detector=null,lastCode='',lastAt=0;
 const inApp=/FBAN|FBAV|Instagram|WhatsApp|Line\/|GSA\/|MicroMessenger|; wv\)|Snapchat|Telegram/i.test(navigator.userAgent);
-function camProblem(title,body){$('#camInfo').textContent='';$('#result').innerHTML=`<div class="result bad"><div class="big">${esc(title)}</div>${body}<div class="small" style="margin-top:8px">Meanwhile you can use <b>Take photo of barcode</b> below — it works on any phone page, even without camera permission for live video.</div></div>`;}
+function camProblem(title,body){$('#camInfo').textContent='';if(SVon){const m=$('#mProb');m.innerHTML=`<b>${esc(title)}</b><br>${body}<br><label class="b sec" for="photoIn" style="margin-top:8px;padding:8px 12px">Take photo of barcode instead</label>`;m.style.display='block';}$('#result').innerHTML=`<div class="result bad"><div class="big">${esc(title)}</div>${body}<div class="small" style="margin-top:8px">Meanwhile you can use <b>Take photo of barcode</b> below — it works on any phone page, even without camera permission for live video.</div></div>`;}
 async function startCam(){
   try{
     if(!window.isSecureContext||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
@@ -960,7 +1023,7 @@ async function startCam(){
     if(devs.length>1){const sl=$('#camSel');const cur=stream.getVideoTracks()[0].getSettings().deviceId;sl.innerHTML=devs.map((d,i)=>`<option value="${d.deviceId}"${d.deviceId===cur?' selected':''}>${esc(d.label||'Camera '+(i+1))}</option>`).join('');sl.style.display='';}}catch(e){}
     detector=null;
     if('BarcodeDetector' in window){try{const f=await BarcodeDetector.getSupportedFormats();if(f.includes('code_128'))detector=new BarcodeDetector({formats:['code_128']});}catch(e){}}
-    $('#camInfo').textContent=detector?'Camera on (native reader)':'Camera on (built-in reader)';
+    $('#camInfo').textContent=detector?'Camera on (native reader)':'Camera on (built-in reader)';$('#mProb').style.display='none';
     $('#camBtn').textContent='Stop camera';
     scanTimer=setInterval(camTick,detector?100:140);
   }catch(e){
@@ -994,7 +1057,7 @@ function stopCam(){
   $('#vid').style.display='none';$('#camBtn').textContent='Start camera';
 }
 let busy=false,bulk=false,coolUntil=0,seenAt={},lastWarnAt=0;
-function multiWarn(n){const now=Date.now();if(now-lastWarnAt<1500)return;lastWarnAt=now;$('#result').innerHTML=`<div class="result warn"><div class="big">${n} different barcodes in view</div>Nothing was scanned. Point the camera at a single sticker, or tick <b>Bulk scanning</b> to read every barcode in view.</div>`;}
+function multiWarn(n){const now=Date.now();if(now-lastWarnAt<1500)return;lastWarnAt=now;mnote('warn',n+' barcodes in view — scan one at a time, or turn on Bulk scanning');$('#result').innerHTML=`<div class="result warn"><div class="big">${n} different barcodes in view</div>Nothing was scanned. Point the camera at a single sticker, or tick <b>Bulk scanning</b> to read every barcode in view.</div>`;}
 async function camTick(){
   if(busy)return;const v=$('#vid');if(!v.videoWidth)return;busy=true;
   try{
@@ -1079,6 +1142,57 @@ async function restoreData(d,label){
   }catch(e){alert('Restore failed: '+e.message);}
 }
 
+
+/* ================= phone / tablet scanner view ================= */
+const TOUCH=(()=>{try{return !!window.Android||/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)||(matchMedia('(pointer:coarse)').matches&&Math.min(screen.width,screen.height)<=1024);}catch(e){return false;}})();
+let SVon=false,stage='load',mT1,mT2;
+function placeVid(){const h=SVon?$('#mView'):$('#camHost');h.prepend($('#cv'));h.prepend($('#vid'));}
+function setView(sv){
+  SVon=sv;try{localStorage.setItem('view',sv?'scanner':'full');}catch(e){}
+  document.body.classList.toggle('sv',sv);placeVid();
+  if(sv){setStage(units.length?'mode':'load');mobileSync();}else{stopCam();document.body.removeAttribute('data-stage');}
+}
+function setStage(s){
+  if(s!=='cam')stopCam();
+  stage=s;document.body.dataset.stage=s;$('#mMenu').classList.remove('open');$('#mPop').classList.remove('show');$('#mToast').classList.remove('show');
+  if(s==='mode')renderMModes();
+  if(s==='cam'){renderMChip();syncM();$('#mProb').style.display='none';startCam();}
+  if(s==='done')renderDone();
+  window.scrollTo(0,0);
+}
+function mobileSync(){
+  if(!SVon)return;
+  $('#mProj').textContent=settings.proj1||'';$('#mTower').textContent=settings.left||'';
+  $('#mGateBack').classList.toggle('has',units.length>0);
+  if(!units.length&&stage!=='load')setStage('load');
+  if(stage==='mode')renderMModes();
+}
+function renderMModes(){
+  const reached=r=>units.filter(u=>RANK[u.status||'']>=r).length;
+  $('#mModes').innerHTML=[['Sorted','Sort','Sorted',1],['Packed','Pack','Packed',2],['Unpacked & Verified','Unpack & verify','UV',3]].map(([k,l,c,r])=>`<button class="mbig ${c}" data-m="${k}">${l}<small>${reached(r).toLocaleString()} of ${units.length.toLocaleString()} done</small></button>`).join('');
+}
+function renderMChip(){
+  const c=cls(mode),t={'Sorted':'Sorting','Packed':'Packing','Unpacked & Verified':'Unpacking & verifying'}[mode]||mode;
+  const b=$('#mChip');b.className=c;b.textContent=t+' ▾';
+}
+function syncM(){
+  const pend=batch.filter(b=>b.staged).length,ok=batch.filter(b=>b.res==='ok'||b.res==='warn').length;
+  $('#mBulk').checked=bulk;$('#mHold').checked=hold;
+  $('#mCount').textContent=(hold?pend+' waiting':ok+' scanned');
+  const a=$('#mApply');a.textContent=hold?`Apply ${pend} scan${pend===1?'':'s'}`:'Finish';a.disabled=hold&&!pend;
+}
+function renderDone(){
+  $('#mDoneTiles').innerHTML=$('#bTiles').innerHTML;$('#mRepMsg').textContent='';
+}
+function mnote(kind,msg,pop){
+  if(!SVon||stage!=='cam')return;
+  if(pop){const p=$('#mPop');p.innerHTML=msg;p.classList.add('show');clearTimeout(mT2);mT2=setTimeout(()=>p.classList.remove('show'),1000);}
+  else{const t=$('#mToast');t.className=kind;t.innerHTML=msg;t.classList.add('show');clearTimeout(mT1);mT1=setTimeout(()=>t.classList.remove('show'),1000);}
+  if(kind!=='ok'&&navigator.vibrate)try{navigator.vibrate(pop?[120,60,120]:80);}catch(e){}
+}
+function setBulk(v){bulk=v;meta.bulk=v;idb.put('meta',{k:'bulk',v});logAct('Bulk scanning',v?'on — every barcode in view is scanned':'off — one barcode at a time');$('#bulkChk').checked=v;$('#mBulk').checked=v;}
+function setHold(v){hold=v;meta.hold=v;idb.put('meta',{k:'hold',v});logAct('Batch mode',v?'hold scans until applied':'apply immediately');$('#holdChk').checked=v;$('#mHold').checked=v;renderBatch();}
+
 /* ================= wiring ================= */
 function updateGate(){
   const has=units.length>0;
@@ -1088,7 +1202,7 @@ function updateGate(){
   $('#gateBtn').textContent=has?'Load a different Excel…':'Choose Excel file…';
   if(!has)stopCam();
 }
-function refreshAll(){updateGate();
+function refreshAll(){updateGate();mobileSync();
   populateFilters();applyFilter();renderTiles();renderRecent();renderGroup();
   $('#hdrInfo').textContent=units.length?`${units.length.toLocaleString()} barcodes · ${meta.source?meta.source.file:''}`:'No data loaded';
   $('#btnExport').disabled=!units.length;
@@ -1131,15 +1245,15 @@ document.addEventListener('DOMContentLoaded',async()=>{
   $('#scanGo').onclick=()=>{applyScan($('#scanIn').value);$('#scanIn').value='';$('#scanIn').focus();};
   $('#photoIn').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
     $('#result').innerHTML='<div class="result warn"><div class="big">Reading photo…</div></div>';
-    try{const codes=await photoDecode(f);if(codes.length>1&&!bulk){beep(false);multiWarn(codes.length);}else if(codes.length){for(const c of codes)await applyScan(c);}else{beep(false);$('#result').innerHTML='<div class="result bad"><div class="big">Could not read a barcode in that photo</div>Retake it closer, with the barcode sharp, flat and filling most of the width, with good light.</div>';logAct('Photo scan failed','no barcode found');}}
+    try{const codes=await photoDecode(f);if(codes.length>1&&!bulk){beep(false);multiWarn(codes.length);}else if(codes.length){for(const c of codes)await applyScan(c);}else{beep(false);$('#result').innerHTML='<div class="result bad"><div class="big">Could not read a barcode in that photo</div>Retake it closer, with the barcode sharp, flat and filling most of the width, with good light.</div>';logAct('Photo scan failed','no barcode found');mnote('bad','Could not read a barcode in that photo');}}
     catch(err){$('#result').innerHTML=`<div class="result bad"><div class="big">Photo could not be read</div>${esc(err.message||err)}</div>`;}};
   $('#camBtn').onclick=()=>stream?stopCam():startCam();
   $('#camSel').onchange=()=>{stopCam();startCam();};
   $('#btnBackupNow').onclick=()=>makeBackup('manual');$('#btnFolder').onclick=pickFolder;$('#btnReenable').onclick=reenableFolder;$('#btnActCsv').onclick=activityCSV;$('#bkBody').onclick=backupAction;
   $('#result').addEventListener('click',e=>{const t=e.target.closest('[data-ov]');if(t)overrideScan(t.dataset.ov,t.dataset.m);});
   $('#btnUndo').onclick=undoLast;$('#btnCommit').onclick=commitBatch;$('#btnNewBatch').onclick=newBatch;$('#btnCsv').onclick=batchCSV;
-  $('#bulkChk').checked=!!meta.bulk;bulk=!!meta.bulk;$('#bulkChk').onchange=e=>{bulk=e.target.checked;meta.bulk=bulk;idb.put('meta',{k:'bulk',v:bulk});logAct('Bulk scanning',bulk?'on — every barcode in view is scanned':'off — one barcode at a time');};
-  $('#holdChk').checked=!!meta.hold;hold=!!meta.hold;$('#holdChk').onchange=e=>{hold=e.target.checked;meta.hold=hold;logAct('Batch mode',hold?'hold scans until applied':'apply immediately');idb.put('meta',{k:'hold',v:hold});renderBatch();};
+  $('#bulkChk').checked=!!meta.bulk;bulk=!!meta.bulk;$('#bulkChk').onchange=e=>setBulk(e.target.checked);$('#mBulk').onchange=e=>setBulk(e.target.checked);
+  hold=meta.hold===undefined?true:!!meta.hold;$('#holdChk').checked=hold;$('#holdChk').onchange=e=>setHold(e.target.checked);$('#mHold').onchange=e=>setHold(e.target.checked);
   $('#grpBy').onchange=renderGroup;
   $('#btnExport').onclick=exportExcel;
   $('#btnBackup').onclick=backup;
@@ -1147,6 +1261,23 @@ document.addEventListener('DOMContentLoaded',async()=>{
   $('#btnClear').onclick=async()=>{if(!confirm('Delete ALL barcodes, statuses and scan log from this browser? (Download a backup first if unsure.)'))return;if(!confirm('Really delete everything?'))return;await makeBackup('before delete');for(const s of ['units','items','log'])await idb.clear(s);logAct('All data deleted',units.length+' barcodes removed');dirty=true;units=[];items=[];log=[];byId=new Map();selId=null;refreshAll();};
   window.addEventListener('resize',()=>{fitPreview();renderLayout();});
   window.addEventListener('afterprint',()=>{$('#printRoot').innerHTML='';});
+
+  /* phone / tablet scanner view */
+  let vp=null;try{vp=localStorage.getItem('view');}catch(e){}
+  $('#hdrSV').style.display=TOUCH?'':'none';
+  $('#hdrSV').onclick=()=>setView(true);
+  $('#mMenuBtn').onclick=()=>$('#mMenu').classList.toggle('open');
+  $('#mmList').onclick=()=>setStage('load');
+  $('#mmFull').onclick=()=>setView(false);
+  $('#mmReport').onclick=()=>{$('#mMenu').classList.remove('open');if(!units.length){alert('Load the Excel list first.');return;}exportExcel();};
+  $('#mGateBack').onclick=()=>setStage('mode');
+  $('#mModes').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;mode=b.dataset.m;logAct('Status selected',mode);meta.mode=mode;idb.put('meta',{k:'mode',v:mode});renderModes();setStage('cam');};
+  $('#mChip').onclick=()=>setStage('mode');
+  $('#mApply').onclick=async()=>{if(hold&&batch.some(b=>b.staged))await commitBatch();setStage('done');};
+  $('#mReport').onclick=async()=>{const b=$('#mReport');b.disabled=true;b.textContent='Building report…';try{await exportExcel();$('#mRepMsg').textContent='Excel report created — find it in your Downloads.';}finally{b.disabled=false;b.textContent='Generate Excel report';}};
+  $('#mMore').onclick=()=>{batch=[];renderBatch();setStage('mode');};
+  SVon=TOUCH&&vp!=='full';document.body.classList.toggle('sv',SVon);placeVid();
+  stage=units.length?'mode':'load';document.body.dataset.stage=SVon?stage:'';if(!SVon)document.body.removeAttribute('data-stage');
   renderModes();refreshAll();renderBatch();renderBackups();renderActivity();logAct('App opened',units.length?units.length+' barcodes loaded':'no data yet');
   if(dirHandle)dirHandle.queryPermission({mode:'readwrite'}).then(p=>{if(p!=='granted'){folderMsg='Folder needs re-approval (click “Re-enable folder”).';renderBackups();}});
   if(!idb.ok)$('#hdrInfo').textContent+=' · ⚠ browser storage unavailable (data will not persist)';
