@@ -477,7 +477,7 @@ async function parseWorkbook(buf){
   }
   throw new Error('Could not find a header row containing "Sr. no." in any sheet.');
 }
-const REG={barcodeno:'bc',srno:'sr',unitofqty:'uq',dima:'a',dimb:'b',code:'code',unitarea:'unitArea',materialremark:'mat',cuttingcode:'cut',reference:'ref',extrusion:'ext',roomno:'room',unit:'unit',status:'status'};
+const REG={barcodeno:'bc',srno:'sr',unitofqty:'uq',sorted:'fSorted',packed:'fPacked',unpackedverified:'fUV',dima:'a',dimb:'b',code:'code',unitarea:'unitArea',materialremark:'mat',cuttingcode:'cut',reference:'ref',extrusion:'ext',roomno:'room',unit:'unit',status:'status'};
 function xlsxCol(i){let s='';i++;while(i>0){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26);}return s;}
 const xesc=s=>String(s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'');
 function sheetXml(rows,widths){
@@ -644,7 +644,8 @@ function makeUnits(parsed){
       if(seen.has(bc)){skipped.push({xlRow:r.xlRow,sr:sr,code:r.code,qty:'',skip:'Duplicate Barcode No.'});continue;}
       seen.add(bc);
       const m=/(\d+)\s*of\s*(\d+)/i.exec(String(r.uq||''));const n=m?+m[1]:1,of=m?+m[2]:1;
-      const st=Object.prototype.hasOwnProperty.call(RANK,r.status)&&r.status!=='Pending'?r.status:'';
+      let st=Object.prototype.hasOwnProperty.call(RANK,r.status)&&r.status!=='Pending'?r.status:'';
+      if(!st){st=Number(r.fUV)===1?'Unpacked & Verified':Number(r.fPacked)===1?'Packed':Number(r.fSorted)===1?'Sorted':'';}
       out.push(decorate({id:bc,sr,n,of,a:r.a??null,b:r.b??null,code:r.code??'',unitArea:typeof r.unitArea==='number'?r.unitArea:null,mat:r.mat??'',cut:r.cut??'',ref:r.ref??'',ext:r.ext??'',room:r.room??'',unit:r.unit??'',status:st,at:st?Date.now():null}));
     }
     padW=Math.max(0,...out.map(u=>u.id.length));
@@ -1026,26 +1027,28 @@ function renderGroup(){
   $('#grpHead').innerHTML=`<tr><th>${{unit:'Unit',room:'Room No.',code:'CODE'}[k]}</th><th>Total</th><th>Pending</th>${STATUSES.map(s=>`<th>${s.k}</th>`).join('')}</tr>`;
   $('#grpBody').innerHTML=keys.map(key=>{const c=counts(g.get(key));return `<tr><td><b>${esc(key)}</b></td><td>${g.get(key).length}</td><td>${c['']}</td>${STATUSES.map(s=>`<td>${c[s.k]}</td>`).join('')}</tr>`;}).join('')||'<tr><td class="mut">No data</td></tr>';
 }
+// 1 = this stage has been reached (cumulative: Packed implies Sorted); for a row with several units, 1 only when every unit has reached it
+function flagsAll(us){return [1,2,3].map(r=>us.every(u=>RANK[u.status||'']>=r)?1:0);}
 async function exportExcel(){
   const btn=$('#btnExport');btn.disabled=true;btn.textContent='Building…';
   try{
     const bySr=new Map();units.forEach(u=>{if(!bySr.has(u.sr))bySr.set(u.sr,[]);bySr.get(u.sr).push(u);});
-    const H1=['Sr. no.',"Dim. 'A'",'CODE',"Dim. 'B'",'Qty. in nos.','Unit Area','Total Area','Material Remark','Cutting Code','Reference','Extrusion','Room No.','Unit','Barcode No.','Status'];
+    const H1=['Sr. no.',"Dim. 'A'",'CODE',"Dim. 'B'",'Qty. in nos.','Unit Area','Total Area','Material Remark','Cutting Code','Reference','Extrusion','Room No.','Unit','Barcode No.','Status','Sorted','Packed','Unpacked & Verified'];
     const r1=[H1];
     items.forEach(it=>{
       if(!(Number.isInteger(it.sr)&&it.sr>0))return; // totals / blank rows
       const us=bySr.get(it.sr)||[];
       const ua=us.length?us[0].unitArea:(typeof it.a==='number'&&typeof it.b==='number'?it.a*it.b/1e6:null);
       const q=typeof it.qty==='number'?it.qty:it.qty??'';
-      r1.push([it.sr??'',it.a??'',it.code??'',it.b??'',q,ua==null?'':Math.round(ua*1e6)/1e6,(ua!=null&&typeof q==='number')?Math.round(ua*q*1e6)/1e6:'',it.mat??'',it.cut??'',it.ref??'',it.ext??'',it.room??'',it.unit??'',us.map(u=>u.id).join(', '),us.length?(us.length===1?(us[0].status||'Pending'):us.map(u=>`${u.id}: ${u.status||'Pending'}`).join('; ')):(it.skip?'(no barcode: '+it.skip+')':'')]);
+      r1.push([it.sr??'',it.a??'',it.code??'',it.b??'',q,ua==null?'':Math.round(ua*1e6)/1e6,(ua!=null&&typeof q==='number')?Math.round(ua*q*1e6)/1e6:'',it.mat??'',it.cut??'',it.ref??'',it.ext??'',it.room??'',it.unit??'',us.map(u=>u.id).join(', '),us.length?(us.length===1?(us[0].status||'Pending'):us.map(u=>`${u.id}: ${u.status||'Pending'}`).join('; ')):(it.skip?'(no barcode: '+it.skip+')':''),...(us.length?flagsAll(us):['','',''])]);
     });
-    const r2=[['Barcode No.','Sr. no.','Unit # of Qty',"Dim. 'A'","Dim. 'B'",'CODE','Unit Area','Material Remark','Cutting Code','Reference','Extrusion','Room No.','Unit','Status','Last scanned']];
-    units.forEach(u=>r2.push([u.id,u.sr,u.of>1?`${u.n} of ${u.of}`:'1 of 1',u.a??'',u.b??'',u.code,u.unitArea==null?'':Math.round(u.unitArea*1e6)/1e6,u.mat,u.cut,u.ref,u.ext,u.room,u.unit,u.status||'Pending',u.at?new Date(u.at).toLocaleString():'']));
+    const r2=[['Barcode No.','Sr. no.','Unit # of Qty',"Dim. 'A'","Dim. 'B'",'CODE','Unit Area','Material Remark','Cutting Code','Reference','Extrusion','Room No.','Unit','Status','Sorted','Packed','Unpacked & Verified','Last scanned']];
+    units.forEach(u=>r2.push([u.id,u.sr,u.of>1?`${u.n} of ${u.of}`:'1 of 1',u.a??'',u.b??'',u.code,u.unitArea==null?'':Math.round(u.unitArea*1e6)/1e6,u.mat,u.cut,u.ref,u.ext,u.room,u.unit,u.status||'Pending',...flagsAll([u]),u.at?new Date(u.at).toLocaleString():'']));
     const r3=[['Time','Barcode No.','Status set','Previous status']];
     log.forEach(l=>r3.push([new Date(l.t).toLocaleString(),l.id,l.to,l.from||'Pending']));
     const blob=await buildXlsx([
-      {name:'Item List',rows:r1,widths:[9,10,14,10,11,11,11,18,22,18,16,10,14,16,22]},
-      {name:'Barcode Register',rows:r2,widths:[16,9,12,10,10,14,11,18,22,18,16,10,14,22,20]},
+      {name:'Item List',rows:r1,widths:[9,10,14,10,11,11,11,18,22,18,16,10,14,16,22,9,9,12]},
+      {name:'Barcode Register',rows:r2,widths:[16,9,12,10,10,14,11,18,22,18,16,10,14,22,9,9,12,20]},
       {name:'Scan Log',rows:r3,widths:[22,16,22,22]}]);
     download(blob,'Panel_Barcode_Register_'+new Date().toISOString().slice(0,10)+'.xlsx');logAct('Excel exported',`${units.length} barcodes, ${log.length} scans`);
   }catch(e){alert('Export failed: '+e.message);}
