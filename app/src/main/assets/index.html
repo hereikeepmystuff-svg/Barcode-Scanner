@@ -66,7 +66,8 @@ video{width:100%;max-height:300px;background:#000;border-radius:10px}
 .stk .num{font-size:12pt;font-weight:800;margin-top:1mm;letter-spacing:.3mm;white-space:nowrap}
 .stk .col.r .num{text-align:right}
 .stk .sub{margin-top:1.2mm;font-weight:800;line-height:1.1;white-space:nowrap;overflow:hidden}
-.stk .col.l .sub{font-size:11pt}
+.stk .col.l .sub{font-size:11pt}.stk .col.l .sub.ru{margin-top:.6mm}
+.stk.boq .size{bottom:2.4mm}.stk.boq .col .sub{margin-top:.7mm}.stk.boq .col.l .sub.ru{margin-top:.1mm}
 .stk .col.r .sub{text-align:right}
 .stk .logo{position:absolute;left:50%;top:12mm;height:10mm;margin-left:-8.5mm}
 .stk .size{position:absolute;left:4mm;right:4mm;bottom:3.4mm;text-align:center;font-weight:800;white-space:nowrap;line-height:1.1}
@@ -207,7 +208,7 @@ body.sv[data-stage=review] #mReview{display:block}
   <div class="grid">
     <div class="card" style="min-width:0">
       <h2>Barcode list</h2>
-      <div class="tablewrap"><table><thead><tr><th>Barcode No.</th><th>Size A × B</th><th>Code</th><th>Unit</th><th>Room</th><th>Status</th></tr></thead><tbody id="tbody"></tbody></table></div>
+      <div class="tablewrap"><table><thead><tr><th>Barcode No.</th><th>Size A × B</th><th>Code</th><th>Unit</th><th>Room / Reuse-New</th><th>Status</th></tr></thead><tbody id="tbody"></tbody></table></div>
       <div class="row" style="margin-top:8px"><button class="b sec" id="pgPrev">‹ Prev</button><span id="pgInfo" class="mut"></span><button class="b sec" id="pgNext">Next ›</button></div>
     </div>
     <div style="min-width:0">
@@ -252,6 +253,7 @@ body.sv[data-stage=review] #mReview{display:block}
         <div class="row" style="margin-top:8px">
           <label>Code + Panel Size max font (pt) <input id="sSize" type="number" min="6" max="30" step="0.5" style="width:70px"></label>
           <label><input type="checkbox" id="sLogo"> Show logo</label>
+          <label><input type="checkbox" id="sRU"> Show Reuse / New under the tower name</label>
         </div>
         <p class="mut small" style="margin-bottom:0">The Code + Panel Size line shrinks automatically if the text gets long, never above the max font set here.</p>
       </div>
@@ -486,7 +488,7 @@ const unesc=s=>s.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"'
 const getAttr=(tag,n)=>{const m=new RegExp('(?:^|\\s)'+n+'="([^"]*)"').exec(tag);return m?unesc(m[1]):null;};
 const colIdx=ref=>{let n=0;for(const ch of ref){if(ch<'A'||ch>'Z')break;n=n*26+ch.charCodeAt(0)-64;}return n-1;};
 const norm=s=>String(s??'').toLowerCase().replace(/[^a-z0-9]/g,'');
-const HDR={srno:'sr',dima:'a',code:'code',dimb:'b',qtyinnos:'qty',qty:'qty',unitarea:'unitArea',totalarea:'totalArea',materialremark:'mat',cuttingcode:'cut',reference:'ref',extrusion:'ext',roomno:'room',unit:'unit'};
+const HDR={srno:'sr',dima:'a',code:'code',dimb:'b',qtyinnos:'qty',qty:'qty',unitarea:'unitArea',totalarea:'totalArea',materialremark:'mat',cuttingcode:'cut',reference:'ref',extrusion:'ext',roomno:'room',unit:'unit',a:'a',b:'b',tqty:'qty',uarea:'unitArea',tarea:'totalArea',remark:'rmkText',reuse:'reuse',new:'newc'};
 
 async function readSheets(buf){
   const zip=await JSZip.loadAsync(buf);
@@ -529,6 +531,7 @@ async function parseSheet(ctx,sh){
   }
   return rows;
 }
+function unitLabel(h){const s=String(h).trim();let m=/^u[-\s_.]*([A-Za-z0-9]+)$/i.exec(s);if(m)return m[1].toUpperCase();if(/^[A-Za-z]{4,}$/.test(s))return s[0].toUpperCase()+s.slice(1).toLowerCase();return s.toUpperCase()==s&&/\d/.test(s)?s.toUpperCase():s;}
 async function parseWorkbook(buf){
   const ctx=await readSheets(buf);
   const order=[...ctx.sheets].sort((a,b)=>(/register/i.test(b.name)?1:0)-(/register/i.test(a.name)?1:0));
@@ -554,17 +557,22 @@ async function parseWorkbook(buf){
     const have=new Set(Object.values(map));
     const miss=need.filter(k=>!have.has(k));
     if(miss.length)throw new Error('Header row found on sheet "'+sh.name+'" but these columns are missing: '+miss.join(', '));
+    const ch=rows[hi].cells,idxOf=n=>{for(const [c,v] of Object.entries(ch))if(norm(v)===n)return +c;return -1;};
+    const cRe=idxOf('reuse'),cNew=idxOf('new'),cTA=Math.max(idxOf('tarea'),idxOf('totalarea'));
+    let ucols=null;
+    if(cRe>=0&&cNew>=0&&cTA>=0&&cRe>cTA+1){ucols=[];for(let c=cTA+1;c<cRe;c++)if(ch[c]!==undefined&&String(ch[c]).trim()!=='')ucols.push({c,label:unitLabel(ch[c])});if(!ucols.length)ucols=null;}
     const items=[];
     for(let i=hi+1;i<rows.length;i++){
       const o={xlRow:rows[i].rn};let any=false;
       for(const [c,k] of Object.entries(map)){if(rows[i].cells[c]!==undefined){o[k]=rows[i].cells[c];any=true;}}
+      if(ucols)o.ucounts=ucols.map(u=>({label:u.label,c:Math.max(0,Math.floor(Number(rows[i].cells[u.c])||0))}));
       if(any)items.push(o);
     }
-    return {sheet:sh.name,headerRow:rows[hi].rn,items};
+    return {sheet:sh.name,headerRow:rows[hi].rn,items,boq:!!ucols,unitLabels:ucols?ucols.map(u=>u.label):[]};
   }
   throw new Error('Could not find a header row containing "Sr. no." in any sheet.');
 }
-const REG={barcodeno:'bc',srno:'sr',unitofqty:'uq',sorted:'fSorted',packed:'fPacked',unpackedverified:'fUV',dima:'a',dimb:'b',code:'code',unitarea:'unitArea',materialremark:'mat',cuttingcode:'cut',reference:'ref',extrusion:'ext',roomno:'room',unit:'unit',status:'status',revision:'revTxt',holdcancelled:'flagTxt',note:'note'};
+const REG={barcodeno:'bc',srno:'sr',unitofqty:'uq',sorted:'fSorted',packed:'fPacked',unpackedverified:'fUV',dima:'a',dimb:'b',code:'code',unitarea:'unitArea',materialremark:'mat',cuttingcode:'cut',reference:'ref',extrusion:'ext',roomno:'room',unit:'unit',status:'status',revision:'revTxt',holdcancelled:'flagTxt',note:'note',reusenew:'ruTxt',seqinunit:'kSeq'};
 function xlsxCol(i){let s='';i++;while(i>0){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26);}return s;}
 const xesc=s=>String(s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'');
 function sheetXml(rows,widths){
@@ -614,13 +622,13 @@ const idb={db:null,ok:false,
 };
 
 /* ================= state ================= */
-let units=[],items=[],byId=new Map(),log=[],meta={},settings={proj1:'Adani Linkbay',proj2:'Tower A',left:'Tower A',logo:true,sizePt:16,digits:6,paper:'label',pw:210,ph:297,margin:5,gap:0,cuts:false};
+let units=[],items=[],byId=new Map(),log=[],meta={},settings={proj1:'Adani Linkbay',proj2:'Tower-A',left:'Tower-A',showRU:true,logo:true,sizePt:16,digits:6,paper:'label',pw:210,ph:297,margin:5,gap:0,cuts:false};
 let filtered=[],page=0,selId=null,mode='Packed',pending=null;
 let activity=[],dirty=false,dirHandle=null,backupsInfo=[],lastBackupAt=0,folderMsg='';
 const BACKUP_MS=window.__BACKUP_MS||15*60*1000,KEEP=3;
 const PAGE=50;
 
-function decorate(u){u.size=(u.a!=null||u.b!=null)?`${fmt(u.a)} x ${fmt(u.b)}`:'';u._h=[u.id,u.code,u.room,u.unit,u.cut,u.ref,u.mat,u.size].join('|').toLowerCase();return u;}
+function decorate(u){u.size=(u.a!=null||u.b!=null)?`${fmt(u.a)} x ${fmt(u.b)}`:'';u._h=[u.id,u.code,u.room,u.unit,u.cut,u.ref,u.mat,u.size,u.ru,u.remark].join('|').toLowerCase();return u;}
 function indexAll(){byId=new Map();units.forEach(u=>byId.set(u.id,u));}
 
 async function loadAll(){
@@ -721,7 +729,7 @@ setInterval(()=>{if(dirty)makeBackup('auto');else renderBackups();},BACKUP_MS);
 /* ================= import ================= */
 let padW=6;function pad(sr){return String(sr).padStart(padW,'0');}
 function makeUnits(parsed){
-  const out=[],skipped=[],warn=[];const seen=new Set();
+  const out=[],skipped=[],warn=[],bw=[];const seen=new Set();
   if(parsed.register){
     parsed.items.forEach((it,ix)=>{it.ix=ix;});
     const ib=new Map(parsed.items.map(i=>[i.sr,i]));
@@ -733,7 +741,7 @@ function makeUnits(parsed){
       const m=/(\d+)\s*of\s*(\d+)/i.exec(String(r.uq||''));const n=m?+m[1]:1,of=m?+m[2]:1;
       let st=Object.prototype.hasOwnProperty.call(RANK,r.status)&&r.status!=='Pending'?r.status:'';
       if(!st){st=Number(r.fUV)===1?'Unpacked & Verified':Number(r.fPacked)===1?'Packed':Number(r.fSorted)===1?'Sorted':'';}
-      out.push(decorate({id:bc,sr,n,of,a:r.a??null,b:r.b??null,code:r.code??'',unitArea:typeof r.unitArea==='number'?r.unitArea:null,mat:r.mat??'',cut:r.cut??'',ref:r.ref??'',ext:r.ext??'',room:r.room??'',unit:r.unit??'',status:st,at:st?Date.now():null,flag:/hold/i.test(r.flagTxt||'')?'hold':/cancel/i.test(r.flagTxt||'')?'cancelled':'',flagNote:r.note||'',rev:parseInt(String(r.revTxt||'').replace(/\D/g,''))||0}));
+      out.push(decorate({id:bc,sr,n,of,a:r.a??null,b:r.b??null,code:r.code??'',unitArea:typeof r.unitArea==='number'?r.unitArea:null,mat:r.mat??'',cut:r.cut??'',ref:r.ref??'',ext:r.ext??'',room:r.room??'',unit:r.unit??'',status:st,at:st?Date.now():null,flag:/hold/i.test(r.flagTxt||'')?'hold':/cancel/i.test(r.flagTxt||'')?'cancelled':'',flagNote:r.note||'',rev:parseInt(String(r.revTxt||'').replace(/\D/g,''))||0,...(r.ruTxt?{ru:String(r.ruTxt)}:{}),...(r.kSeq!==undefined&&r.kSeq!==''?{k:Number(r.kSeq)||1}:{})}));
     }
     padW=Math.max(0,...out.map(u=>u.id.length));
     const wst=out.filter(u=>u.status).length;
@@ -743,28 +751,43 @@ function makeUnits(parsed){
   const maxSr=Math.max(0,...parsed.items.map(i=>Number.isInteger(i.sr)?i.sr:0));padW=Math.max(settings.digits,String(maxSr).length);
   parsed.items.forEach((it,ix)=>{
     it.ix=ix;delete it.skip;
-    const sr=it.sr,q=it.qty;
+    const sr=it.sr;let q=it.qty;
+    if(it.ucounts&&!(typeof q==='number'&&q>=1&&Number.isInteger(q))){const us=it.ucounts.reduce((t,x)=>t+x.c,0);if(us>=1)q=it.qty=us;}
     if(!(Number.isInteger(sr)&&sr>0)){it.skip='No Sr. no. (total / blank row)';skipped.push(it);return;}
     if(!(typeof q==='number'&&q>=1&&Number.isInteger(q))){it.skip=`Quantity is not a whole number (“${q??''}”)`;skipped.push(it);return;}
     if(seen.has(sr)){it.skip='Duplicate Sr. no.';skipped.push(it);return;}
     seen.add(sr);
     const ua=(typeof it.a==='number'&&typeof it.b==='number')?it.a*it.b/1e6:(typeof it.unitArea==='number'?it.unitArea:null);
+    if(it.ucounts){
+      let per=[];it.ucounts.forEach(uc=>{for(let k=1;k<=uc.c;k++)per.push({unit:uc.label,k});});
+      if(!per.length){for(let k=1;k<=q;k++)per.push({unit:'',k});bw.push(`Sr. no. ${sr}: no unit counts — ${q} panel(s) created with no unit`);}
+      else if(per.length!==q)bw.push(`Sr. no. ${sr}: unit counts add up to ${per.length} but T.QTY is ${q} — using the unit counts`);
+      const total=per.length,rc=Number(it.reuse)||0,nc=Number(it.newc)||0,rcount=Math.max(0,Math.min(total,rc));
+      if(rc+nc!==total)bw.push(`Sr. no. ${sr}: Reuse + New (${rc+nc}) does not equal ${total} — the extra panels are marked New`);
+      const rt=String(it.rmkText??'').trim(),rk=/^add/i.test(rt)?'add':/^rem/i.test(rt)?'remove':'';
+      per.forEach((pp,i)=>out.push(decorate({id:total===1?pad(sr):`${pad(sr)}-${i+1}`,sr,n:i+1,of:total,k:pp.k,a:it.a??null,b:it.b??null,code:it.code??'',unitArea:ua,mat:it.mat??'',cut:it.cut??'',ref:it.ref??'',ext:it.ext??'',room:'',unit:pp.unit,ru:i<rcount?'Reuse':'New',rmk:rk,remark:rt,status:'',at:null,flag:'',rev:0})));
+      return;
+    }
     for(let n=1;n<=q;n++){
       out.push(decorate({id:q===1?pad(sr):`${pad(sr)}-${n}`,sr,n,of:q,a:it.a??null,b:it.b??null,code:it.code??'',unitArea:ua,mat:it.mat??'',cut:it.cut??'',ref:it.ref??'',ext:it.ext??'',room:it.room??'',unit:it.unit??'',status:'',at:null,flag:'',rev:0}));
     }
   });
+  if(bw.length)warn.push(bw.slice(0,5).join(' · ')+(bw.length>5?` … and ${bw.length-5} more row(s) with count mismatches`:''));
   const noDim=out.filter(u=>u.a==null||u.b==null).length;
-  if(noDim)warn.push(`${noDim} barcode(s) have a missing Dim A or Dim B — Panel Size will print blank/partial.`);
+  if(noDim)warn.push(`${noDim} barcode(s) have a missing ${parsed.boq?'A or B size (the sticker line simply leaves it out)':'Dim A or Dim B — Panel Size will print blank/partial'}.`);
   return {units:out,skipped,warn};
 }
-const RKEYS=['a','b','code','room','unit','mat','cut','ref','ext'];
-const ukey=u=>u.sr+'/'+u.n;
+const RKEYS=['a','b','code','room','unit','mat','cut','ref','ext','ru'];
+const ukey=u=>u.k!==undefined?`${u.sr}|${u.unit}|${u.k}`:u.sr+'/'+u.n;
+const isBoq=l=>l.some(u=>u.k!==undefined);
 function computeDiff(nu){
   const old=new Map(units.map(u=>[ukey(u),u])),nw=new Set(nu.map(ukey));
-  const added=[],removed=[],changed=[],released=[];
-  nu.forEach(u=>{const o=old.get(ukey(u));if(!o)added.push(u);else{if(o.flag)released.push(o);const d=RKEYS.filter(k=>String(o[k]??'')!==String(u[k]??''));if(d.length)changed.push({o,u,d});}});
+  const added=[],removed=[],changed=[],released=[],tagged=[];
+  nu.forEach(u=>{const o=old.get(ukey(u));
+    if(u.rmk==='remove'){if(!o||!o.flag){tagged.push({u,o});removed.push(o||u);}return;}
+    if(!o)added.push(u);else{if(o.flag)released.push(o);const d=RKEYS.filter(k=>String(o[k]??'')!==String(u[k]??''));if(d.length)changed.push({o,u,d});}});
   units.forEach(o=>{if(!nw.has(ukey(o))&&!o.flag)removed.push(o);});
-  return {added,removed,changed,released};
+  return {added,removed,changed,released,tagged};
 }
 function showPreview(p,fileName,target){
   target=target||p.target||'#importPreview';p.target=target;['#importPreview','#scanImport'].forEach(t=>{if(t!==target)$(t).innerHTML='';});
@@ -772,26 +795,34 @@ function showPreview(p,fileName,target){
   const multi=p.parsed.items.filter(i=>i.qty>1&&!i.skip).length;
   const isReg=!!p.parsed.register;
   const existing=units.length;
+  const compat=!existing||isBoq(units)===isBoq(us);
+  const nRem=us.filter(u=>u.rmk==='remove').length,nAdd=us.filter(u=>u.rmk==='add').length;
   let h=`<div class="note"><b>${p.parsed.items.length.toLocaleString()}</b> rows read from sheet “${esc(p.parsed.sheet)}” (header on row ${p.parsed.headerRow}).<br>
    <b>${us.length.toLocaleString()}</b> barcodes will be ${isReg?'loaded from the register':'generated'}, numbered ${esc(us[0]?us[0].id:'')} … ${esc(us.length?us[us.length-1].id:'')} (${padW} digits).${multi?` (${multi} rows have quantity &gt; 1 and get one barcode per unit.)`:' No row has a quantity above 1, so every barcode number = Sr. no.'}</div>`;
+  if(p.parsed.boq)h+=`<div class="note ok"><b>BOQ format detected.</b> Unit columns: <b>${p.parsed.unitLabels.map(esc).join(', ')}</b>. Each row is split into one barcode per panel per unit; within a row the first <i>Reuse</i> count of panels are marked Reuse and the rest New.${nAdd||nRem?`<br>Remark tags: <b>${nAdd}</b> panel(s) tagged <b>Add</b>, <b>${nRem}</b> tagged <b>Remove</b>.`:''}</div>`;
   warn.forEach(w=>h+=`<div class="note warn">${esc(w)}</div>`);
   if(skipped.length){
     h+=`<div class="note warn"><b>${skipped.length}</b> row(s) will be <u>skipped</u> (no barcode):<div class="tablewrap" style="max-height:160px;margin-top:6px;background:#fff"><table><thead><tr><th>Excel row</th><th>Sr. no.</th><th>CODE</th><th>Qty</th><th>Reason</th></tr></thead><tbody>${skipped.slice(0,50).map(s=>`<tr><td>${s.xlRow}</td><td>${esc(s.sr??'')}</td><td>${esc(s.code??s.a??'')}</td><td>${esc(s.qty??'')}</td><td>${esc(s.skip)}</td></tr>`).join('')}</tbody></table></div></div>`;
   }
   p.diff=null;
-  if(existing&&isReg)h+=`<div class="note warn">Data already exists (${existing.toLocaleString()} barcodes). Confirming will <b>replace</b> the list with this register; scan status and scan log are kept for barcode numbers that still exist.</div>`;
+  const rmRadio=`<div style="margin-top:6px"><label><input type="radio" name="rm" value="hold" checked> <b>On hold</b> (can be released later)</label> &nbsp; <label><input type="radio" name="rm" value="cancelled"> <b>Cancelled</b> (permanent unless released by hand)</label></div>`;
+  if(existing&&!isReg&&!compat)h+=`<div class="note bad"><b>The current list (${existing.toLocaleString()} barcodes) is in a different format.</b> Confirming will <b>replace</b> it with this list and clear the old scan statuses and scan log (a backup is saved first).${nRem?` ${nRem} panel(s) tagged <b>Remove</b> will be imported as:${rmRadio}`:''}</div>`;
+  else if(!existing&&nRem)h+=`<div class="note warn"><b>${nRem}</b> panel(s) are tagged <b>Remove</b> — they will be imported but blocked from scanning. Mark them as:${rmRadio}</div>`;
+  else if(existing&&isReg)h+=`<div class="note warn">Data already exists (${existing.toLocaleString()} barcodes). Confirming will <b>replace</b> the list with this register; scan status and scan log are kept for barcode numbers that still exist.</div>`;
   else if(existing){
     const d=p.diff=computeDiff(us);
+    const bigChange=d.changed.length>20&&d.changed.length>0.2*us.length;
     const L=(a,f)=>a.length?`<div class="rvlist">${a.slice(0,40).map(f).join('<br>')}${a.length>40?`<br>… and ${a.length-40} more`:''}</div>`:'';
     const none=!d.added.length&&!d.removed.length&&!d.changed.length&&!d.released.length;
     h+=`<div class="note warn"><b>This changes an existing list (${existing.toLocaleString()} barcodes).</b> Panels are matched by Sr. no. and unit number; existing barcode numbers, statuses and scan history are kept. ${none?'<br><b>No differences found.</b>':''}</div>`;
+    if(bigChange)h+=`<div class="note bad"><b>Check before confirming:</b> ${d.changed.length.toLocaleString()} panels changed size or code. If Sr. no. was renumbered in this file, matching by Sr. no. will be wrong — Cancel and ask for the original numbering.</div>`;
     h+=`<div class="note ok"><b>${d.added.length}</b> added — continue the same series, marked with the next revision number${L(d.added,u=>esc(u.id)+' · '+esc(u.size)+' · '+esc(u.code))}</div>`;
-    h+=`<div class="note bad"><b>${d.removed.length}</b> removed from the list — kept in the app, scanning them will show a warning${L(d.removed,u=>esc(u.id)+' · '+esc(u.size)+' · '+esc(u.code)+(u.status?' · already '+esc(u.status):''))}`+(d.removed.length?`<div style="margin-top:6px"><label><input type="radio" name="rm" value="hold" checked> <b>On hold</b> (can be released later)</label> &nbsp; <label><input type="radio" name="rm" value="cancelled"> <b>Cancelled</b> (permanent unless released by hand)</label></div>`:'')+`</div>`;
+    h+=`<div class="note bad"><b>${d.removed.length}</b> removed (dropped from the list or tagged Remove) — kept in the app, scanning them will show a warning${L(d.removed,u=>esc(u.id)+' · '+esc(u.size)+' · '+esc(u.code)+(u.status?' · already '+esc(u.status):''))}`+(d.removed.length?rmRadio:'')+`</div>`;
     h+=`<div class="note warn"><b>${d.changed.length}</b> changed (size, code, room…) — stickers flagged for reprint${L(d.changed,c=>esc(c.o.id)+': '+c.d.map(k=>k+' '+esc(c.o[k]??'')+' → '+esc(c.u[k]??'')).join(', '))}</div>`;
     if(d.released.length)h+=`<div class="note ok"><b>${d.released.length}</b> panel(s) on hold / cancelled are back in the new list and will be released.</div>`;
   }
   const sample=us.slice(0,6);
-  h+=`<div class="tablewrap" style="max-height:200px"><table><thead><tr><th>Barcode No.</th><th>Size</th><th>Code</th><th>Unit</th><th>Room</th><th>Material remark</th><th>Cutting code</th></tr></thead><tbody>${sample.map(u=>`<tr><td><b>${esc(u.id)}</b></td><td>${esc(u.size)}</td><td>${esc(u.code)}</td><td>${esc(u.unit)}</td><td>${esc(u.room)}</td><td>${esc(u.mat)}</td><td>${esc(u.cut)}</td></tr>`).join('')}</tbody></table></div>
+  h+=`<div class="tablewrap" style="max-height:200px"><table><thead><tr><th>Barcode No.</th><th>Size</th><th>Code</th><th>Unit</th><th>${p.parsed.boq?'Reuse/New':'Room'}</th><th>Material remark</th><th>Cutting code</th></tr></thead><tbody>${sample.map(u=>`<tr><td><b>${esc(u.id)}</b></td><td>${esc(u.size)}</td><td>${esc(u.code)}</td><td>${esc(u.unit)}</td><td>${esc(u.room||u.ru||'')}</td><td>${esc(u.mat)}</td><td>${esc(u.cut)}</td></tr>`).join('')}</tbody></table></div>
   <div class="row" style="margin-top:12px"><button class="b cfm">${p.parsed.register?'Confirm &amp; load':'Confirm &amp; generate'} ${us.length.toLocaleString()} barcodes</button><button class="b sec cnl">Cancel</button></div>`;
   $(target).innerHTML=h;
   $(target).querySelector('.cfm').onclick=()=>commitImport(fileName);
@@ -801,15 +832,23 @@ async function commitImport(fileName){
   const target=pending.target||'#importPreview';const rmEl=$(target).querySelector('input[name=rm]:checked');const rmMode=rmEl?rmEl.value:'hold';const btn=$(target).querySelector('.cfm');btn.disabled=true;btn.textContent='Saving…';
   if(units.length)await makeBackup('before import');
   const {built,parsed}=pending;
-  const old=new Map(units.map(u=>[u.sr+'/'+u.n,u]));
-  const revMode=units.length>0&&!parsed.register;
-  if(revMode)built.units.forEach(u=>{const o=old.get(ukey(u));if(o&&o.id!==u.id){u.id=o.id;decorate(u);}});
-  const newKey=new Map(built.units.map(u=>[u.sr+'/'+u.n,u.id]));
-  const idMap=new Map();units.forEach(u=>{const nid=newKey.get(u.sr+'/'+u.n);if(nid)idMap.set(u.id,nid);else if(revMode)idMap.set(u.id,u.id);});
+  const old=new Map(units.map(u=>[ukey(u),u]));
+  const revMode=units.length>0&&!parsed.register&&isBoq(units)===isBoq(built.units);
+  const replaceOther=units.length>0&&!parsed.register&&!revMode;
+  if(revMode){
+    built.units.forEach(u=>{const o=old.get(ukey(u));if(o&&o.id!==u.id){u.id=o.id;decorate(u);}});
+    const used=new Set(units.map(u=>u.id));
+    built.units.forEach(u=>{if(old.has(ukey(u)))return;
+      if(used.has(u.id)){let m=1;while(used.has(`${pad(u.sr)}-${m}`))m++;u.id=`${pad(u.sr)}-${m}`;decorate(u);}
+      used.add(u.id);});
+  }
+  const newKey=new Map(built.units.map(u=>[ukey(u),u.id]));
+  const idMap=new Map();units.forEach(u=>{const nid=newKey.get(ukey(u));if(nid)idMap.set(u.id,nid);else if(revMode)idMap.set(u.id,u.id);});
   const hadStatus=units.some(u=>u.status);
   let keep=true;
-  if(!revMode&&hadStatus&&meta.source&&meta.source.file!==fileName)keep=confirm('A different list is being loaded.\n\nOK = keep existing scan statuses for panels with the same Sr. no.\nCancel = start fresh (existing statuses and scan log are cleared).');
-  if(keep){built.units.forEach(u=>{const o=old.get(u.sr+'/'+u.n);if(o&&o.status&&(!u.status||RANK[o.status]>RANK[u.status])){u.status=o.status;u.at=o.at;}});}
+  if(replaceOther)keep=false;
+  else if(!revMode&&hadStatus&&meta.source&&meta.source.file!==fileName)keep=confirm('A different list is being loaded.\n\nOK = keep existing scan statuses for panels with the same Sr. no.\nCancel = start fresh (existing statuses and scan log are cleared).');
+  if(keep){built.units.forEach(u=>{const o=old.get(ukey(u));if(o&&o.status&&(!u.status||RANK[o.status]>RANK[u.status])){u.status=o.status;u.at=o.at;}});}
   else{log=[];await idb.clear('log');idMap.clear();}
   if(log.length){log=log.filter(l=>idMap.has(l.id));log.forEach(l=>l.id=idMap.get(l.id));await idb.clear('log');await idb.putMany('log',log);}
   let revNote='';
@@ -817,10 +856,11 @@ async function commitImport(fileName){
     const d=computeDiff(built.units);const now=Date.now();
     const changedCount=d.added.length+d.removed.length+d.changed.length+d.released.length;
     const N=changedCount?(meta.rev||0)+1:(meta.rev||0);
-    built.units.forEach(u=>{const o=old.get(ukey(u));if(o){u.rev=o.rev||0;u.flag='';u.flagNote='';if(o.reprint)u.reprint=true;}else{u.rev=N;u.flag='';}});
+    built.units.forEach(u=>{const o=old.get(ukey(u));if(o){u.rev=o.rev||0;if(u.rmk==='remove'&&o.flag){u.flag=o.flag;u.flagNote=o.flagNote||'';u.flagAt=o.flagAt||null;}else{u.flag='';u.flagNote='';}if(o.reprint)u.reprint=true;}else{u.rev=N;u.flag='';}});
+    d.tagged.forEach(({u,o})=>{u.flag=rmMode;u.flagAt=now;u.flagNote='Tagged Remove in Excel (Rev '+N+')';});
     d.released.forEach(o=>logAct('Panel released',`${o.id} is back in the list (Rev ${N})`));
     d.changed.forEach(c=>{c.u.reprint=true;c.u.chgNote='Rev '+N+': '+c.d.map(k=>`${k} ${c.o[k]??''} → ${c.u[k]??''}`).join(', ');});
-    d.removed.forEach(o=>{o.flag=rmMode;o.flagAt=now;o.flagNote='Removed in Rev '+N;});
+    d.removed.forEach(o=>{if(!d.tagged.some(t=>(t.o||t.u)===o)){o.flag=rmMode;o.flagAt=now;o.flagNote='Removed in Rev '+N;}});
     const nk=new Set(built.units.map(ukey));
     const extra=units.filter(o=>!nk.has(ukey(o)));
     const newSr=new Set(parsed.items.map(i=>i.sr));
@@ -833,7 +873,12 @@ async function commitImport(fileName){
       logAct('List revised',`Rev ${N} from ${fileName}: ${d.added.length} added, ${d.removed.length} removed (${rmMode}), ${d.changed.length} changed, ${d.released.length} released`);
     }
     revNote=changedCount?` Revision ${N}: <b>${d.added.length}</b> added, <b>${d.removed.length}</b> removed (${rmMode}), <b>${d.changed.length}</b> changed.`:' No differences from the current list.';
-  }else{units=built.units;items=parsed.items;}
+  }else{
+    units=built.units;items=parsed.items;
+    units.filter(u=>u.rmk==='remove').forEach(u=>{u.flag=rmMode;u.flagAt=Date.now();u.flagNote='Tagged Remove in Excel';});
+    if(parsed.boq){const mt=/(?:^|[^A-Za-z0-9])T[-_ ]?([A-Z])(?:[^A-Za-z0-9]|$)/.exec(String(fileName))||/^T[-_ ]?([A-Z])(?:[^A-Za-z0-9]|$)/.exec(String(parsed.sheet));
+      if(mt){const t='Tower-'+mt[1];if(settings.left!==t){settings.left=t;$('#sLeft').value=t;saveSettings();revNote=` Tower name set to <b>${esc(t)}</b> from the file name (change it in Settings if wrong).`;}}}
+  }
   units.sort((x,y)=>x.sr-y.sr||x.n-y.n);indexAll();
   await idb.clear('units');await idb.clear('items');
   const chunk=5000;
@@ -842,7 +887,7 @@ async function commitImport(fileName){
   meta.source={file:fileName,sheet:parsed.sheet,at:Date.now()};dirty=true;logAct('Barcodes generated',`${units.length} barcodes from ${fileName} (${padW} digits, ${built.skipped.length} rows skipped)`);
   await idb.put('meta',{k:'source',v:meta.source});
   pending=null;
-  $(target).innerHTML=`<div class="note ok"><b>${units.length.toLocaleString()}</b> barcodes ${parsed.register?'loaded':'generated'} and saved.${revNote} ${target==='#scanImport'?'You can start scanning below.':'Go to <b>2 · Barcodes &amp; Stickers</b> to print.'}${idb.ok?'':' <b>Warning:</b> this browser blocked local storage, so data will be lost when the page is closed — download a backup.'}</div>`;
+  $(target).innerHTML=`<div class="note ok"><b>${units.length.toLocaleString()}</b> barcodes ${parsed.register?'loaded':'generated'} and saved.${replaceOther?' The previous list was replaced.':''}${revNote} ${target==='#scanImport'?'You can start scanning below.':'Go to <b>2 · Barcodes &amp; Stickers</b> to print.'}${idb.ok?'':' <b>Warning:</b> this browser blocked local storage, so data will be lost when the page is closed — download a backup.'}</div>`;
   refreshAll();
 }
 
@@ -850,19 +895,19 @@ async function commitImport(fileName){
 function populateFilters(){
   const fill=(sel,vals,label)=>{const cur=sel.value;sel.innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option>${esc(v)}</option>`).join('');sel.value=cur;};
   const uniq=k=>[...new Set(units.map(u=>u[k]).filter(v=>v!==''&&v!=null))].sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true}));
-  fill($('#fUnit'),uniq('unit'),'All units');fill($('#fRoom'),uniq('room'),'All rooms');
-  const st=$('#fStatus');const cur=st.value;st.innerHTML='<option value="">Any status</option><option value="__p">Pending (not scanned)</option><option value="__h">On hold / cancelled</option><option value="__r">Added in a revision</option><option value="__rp">Sticker needs reprint</option>'+STATUSES.map(s=>`<option>${s.k}</option>`).join('');st.value=cur;
+  fill($('#fUnit'),uniq('unit'),'All units');fill($('#fRoom'),uniq(units.some(u=>u.room)?'room':'ru'),units.some(u=>u.room)?'All rooms':'Reuse / New');
+  const st=$('#fStatus');const cur=st.value;st.innerHTML='<option value="">Any status</option><option value="__p">Pending (not scanned)</option><option value="__h">On hold / cancelled</option><option value="__r">Added in a revision</option><option value="__rp">Sticker needs reprint</option><option value="__ra">Remark: Add</option><option value="__rr">Remark: Remove</option>'+STATUSES.map(s=>`<option>${s.k}</option>`).join('');st.value=cur;
 }
 function applyFilter(keepPage){
   const q=$('#fQ').value.trim().toLowerCase(),un=$('#fUnit').value,rm=$('#fRoom').value,st=$('#fStatus').value;
-  filtered=units.filter(u=>(!q||u._h.includes(q))&&(!un||u.unit===un)&&(!rm||u.room===rm)&&(!st||(st==='__p'?(!u.status&&!u.flag):st==='__h'?!!u.flag:st==='__r'?u.rev>0:st==='__rp'?!!u.reprint:u.status===st)));
+  filtered=units.filter(u=>(!q||u._h.includes(q))&&(!un||u.unit===un)&&(!rm||(u.room||u.ru)===rm)&&(!st||(st==='__p'?(!u.status&&!u.flag):st==='__h'?!!u.flag:st==='__r'?u.rev>0:st==='__rp'?!!u.reprint:st==='__ra'?u.rmk==='add':st==='__rr'?u.rmk==='remove':u.status===st)));
   if(!keepPage)page=0;
   renderTable();
 }
 function renderTable(){
   const pages=Math.max(1,Math.ceil(filtered.length/PAGE));if(page>=pages)page=pages-1;
   const rows=filtered.slice(page*PAGE,page*PAGE+PAGE);
-  $('#tbody').innerHTML=rows.map(u=>`<tr class="click${u.id===selId?' sel':''}" data-id="${esc(u.id)}"><td><b>${esc(u.id)}</b></td><td>${esc(u.size)}</td><td>${esc(u.code)}</td><td>${esc(u.unit)}</td><td>${esc(u.room)}</td><td>${u.flag?`<span class="pill Hold">${u.flag==='hold'?'On hold':'Cancelled'}</span> `:''}<span class="pill ${cls(u.status)}">${esc(u.status||'Pending')}</span>${u.rev?` <span class="pill New">Rev ${u.rev}</span>`:''}${u.reprint?` <span class="pill Rep">Reprint</span>`:''}</td></tr>`).join('')||'<tr><td colspan="6" class="mut">No barcodes. Import an Excel list first.</td></tr>';
+  $('#tbody').innerHTML=rows.map(u=>`<tr class="click${u.id===selId?' sel':''}" data-id="${esc(u.id)}"><td><b>${esc(u.id)}</b></td><td>${esc(u.size)}</td><td>${esc(u.code)}</td><td>${esc(u.unit)}</td><td>${esc(u.room||u.ru||'')}</td><td>${u.flag?`<span class="pill Hold">${u.flag==='hold'?'On hold':'Cancelled'}</span> `:''}<span class="pill ${cls(u.status)}">${esc(u.status||'Pending')}</span>${u.rev?` <span class="pill New">Rev ${u.rev}</span>`:''}${u.reprint?` <span class="pill Rep">Reprint</span>`:''}${u.rmk?` <span class="pill ${u.rmk==='add'?'New':'Hold'}">${u.rmk==='add'?'Add':'Remove'}</span>`:''}</td></tr>`).join('')||'<tr><td colspan="6" class="mut">No barcodes. Import an Excel list first.</td></tr>';
   $('#pgInfo').textContent=`Page ${page+1} / ${pages}`;
   $('#pgPrev').disabled=page===0;$('#pgNext').disabled=page>=pages-1;
   $('#fCount').textContent=`${filtered.length.toLocaleString()} of ${units.length.toLocaleString()} barcodes`;
@@ -880,14 +925,14 @@ function updateBatch(){
 /* ================= sticker ================= */
 function fitPt(text,maxPt,widthMm){const est=widthMm/(Math.max(1,text.length)*0.64*0.3528);return Math.max(6,Math.min(maxPt,Math.floor(est*2)/2));}
 function stickerHTML(u){
-  const unit=String(u.unit||'');
-  const ufs=fitPt(unit,13,34);
-  const line=[u.code,u.size].filter(x=>x!=='').join('   ');
+  const unit=String(u.unit||''),boq=u.k!==undefined;
+  const ufs=fitPt(unit,boq?24:13,34);
+  const line=boq?[fmt(u.a),u.code,fmt(u.b)].filter(x=>x!=='').join('\u2002\u2002'):[u.code,u.size].filter(x=>x!=='').join('   ');
   const sfs=fitPt(line,settings.sizePt||16,90);
   const bc=barcodeSVG(u.id,12,33,0.5);
-  return `<div class="stk"><div class="frame"></div>
+  return `<div class="stk${boq?' boq':''}"><div class="frame"></div>
 <div class="head">${esc(settings.proj1)}</div>
-<div class="col l"><div class="bc">${bc}</div><div class="num">${esc(u.id)}</div><div class="sub">${esc(settings.left)}</div></div>
+<div class="col l"><div class="bc">${bc}</div><div class="num">${esc(u.id)}</div><div class="sub">${esc(settings.left)}</div>${boq&&settings.showRU!==false&&u.ru?`<div class="sub ru">${esc(u.ru)}</div>`:''}</div>
 ${settings.logo?`<img class="logo" src="${LOGO}" alt="">`:''}
 <div class="col r"><div class="bc">${bc}</div><div class="num">${esc(u.id)}</div><div class="sub" style="font-size:${ufs}pt">${esc(unit)}</div></div>
 <div class="size" style="font-size:${sfs}pt">${esc(line)}</div></div>`;
@@ -901,7 +946,7 @@ function select(id){
   renderTable();
   if(!u){$('#prevScale').innerHTML='';$('#detail').innerHTML='';$('#btnPrintOne').disabled=true;return;}
   $('#prevScale').innerHTML=stickerHTML(u);fitPreview();
-  const rows=[['Barcode No.',u.id],['Sr. no.',u.sr],['Unit # (qty)',u.of>1?`${u.n} of ${u.of}`:'1 of 1'],['Dim A',fmt(u.a)],['Dim B',fmt(u.b)],['CODE',u.code],['Unit area (m²)',u.unitArea==null?'':u.unitArea.toFixed(4)],['Material remark',u.mat],['Cutting code',u.cut],['Reference',u.ref],['Extrusion',u.ext],['Room No.',u.room],['Unit',u.unit],['Status',u.status||'Pending'],['Last scanned',fdt(u.at)],['Revision',u.rev?'Added in Rev '+u.rev:'Original list'],['Hold / cancelled',u.flag?(u.flag==='hold'?'On hold':'Cancelled')+(u.flagNote?' — '+u.flagNote:''):''],['Change note',u.chgNote||'']];
+  const rows=[['Barcode No.',u.id],['Sr. no.',u.sr],['Unit # (qty)',u.of>1?`${u.n} of ${u.of}`:'1 of 1'],['Dim A',fmt(u.a)],['Dim B',fmt(u.b)],['CODE',u.code],['Unit area (m²)',u.unitArea==null?'':u.unitArea.toFixed(4)],['Material remark',u.mat],['Cutting code',u.cut],['Reference',u.ref],['Extrusion',u.ext],['Room No.',u.room],['Unit',u.unit],['Reuse / New',u.ru||''],['Remark (Add / Remove)',u.remark||''],['Status',u.status||'Pending'],['Last scanned',fdt(u.at)],['Revision',u.rev?'Added in Rev '+u.rev:'Original list'],['Hold / cancelled',u.flag?(u.flag==='hold'?'On hold':'Cancelled')+(u.flagNote?' — '+u.flagNote:''):''],['Change note',u.chgNote||'']];
   $('#detail').innerHTML=rows.map(([k,v])=>`<div>${k}</div><div>${esc(v)}</div>`).join('');
   $('#btnPrintOne').disabled=false;
   $('#flagBtns').innerHTML=u.flag?`<button class="b sec" data-fl="">Release (back to normal)</button>${u.flag==='hold'?`<button class="b danger" data-fl="cancelled">Cancel permanently</button>`:`<button class="b sec" data-fl="hold">Change to on hold</button>`}`:`<button class="b sec" data-fl="hold">Put on hold</button><button class="b danger" data-fl="cancelled">Cancel panel</button>`;
@@ -986,7 +1031,7 @@ function renderRecent(){
   $('#btnUndo').disabled=!log.length;
 }
 function beep(ok){try{const a=beep.ctx||(beep.ctx=new (window.AudioContext||window.webkitAudioContext)());const o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=ok?1200:300;g.gain.value=.15;o.start();o.stop(a.currentTime+(ok?.1:.3));}catch(e){}}
-function infoKV(u){return `<div class="kv small" style="margin-top:6px;color:inherit"><div>Panel size</div><div><b>${esc(u.size)}</b> mm</div><div>CODE</div><div>${esc(u.code)}</div><div>Unit / Room</div><div>${esc(u.unit)} / ${esc(u.room)}</div><div>Material</div><div>${esc(u.mat)}</div><div>Cutting code</div><div>${esc(u.cut)}</div>${u.of>1?`<div>Unit #</div><div>${u.n} of ${u.of}</div>`:''}</div>`;}
+function infoKV(u){return `<div class="kv small" style="margin-top:6px;color:inherit"><div>Panel size</div><div><b>${esc(u.size)}</b> mm</div><div>CODE</div><div>${esc(u.code)}</div><div>${u.room?'Unit / Room':'Unit'}</div><div>${esc(u.unit)}${u.room?' / '+esc(u.room):''}</div>${u.ru?`<div>Reuse / New</div><div>${esc(u.ru)}</div>`:''}<div>Material</div><div>${esc(u.mat)}</div><div>Cutting code</div><div>${esc(u.cut)}</div>${u.of>1?`<div>Unit #</div><div>${u.n} of ${u.of}</div>`:''}</div>`;}
 let batch=[],hold=false,holdOpen=false;
 function holdPopup(u){holdOpen=true;$('#hpTitle').textContent='⛔ '+u.id+' — '+(u.flag==='hold'?'ON HOLD':'CANCELLED');$('#hpBody').innerHTML=`Do not use this panel. Nothing was changed.<br><span class="mut small">${esc(u.flagNote||'')}</span>${infoKV(u)}`;$('#holdPop').classList.add('show');if(navigator.vibrate)try{navigator.vibrate([200,80,200]);}catch(e){}}
 function bpush(id,m,res,msg,staged){batch.push({id,mode:m,res,msg,t:Date.now(),staged:!!staged});renderBatch();}
@@ -1180,22 +1225,22 @@ async function exportExcel(){
   const btn=$('#btnExport');btn.disabled=true;btn.textContent='Building…';
   try{
     const bySr=new Map();units.forEach(u=>{if(!bySr.has(u.sr))bySr.set(u.sr,[]);bySr.get(u.sr).push(u);});
-    const H1=['Sr. no.',"Dim. 'A'",'CODE',"Dim. 'B'",'Qty. in nos.','Unit Area','Total Area','Material Remark','Cutting Code','Reference','Extrusion','Room No.','Unit','Barcode No.','Status','Sorted','Packed','Unpacked & Verified','Revision','Hold / Cancelled'];
+    const H1=['Sr. no.',"Dim. 'A'",'CODE',"Dim. 'B'",'Qty. in nos.','Unit Area','Total Area','Material Remark','Cutting Code','Reference','Extrusion','Room No.','Unit','Barcode No.','Status','Sorted','Packed','Unpacked & Verified','Revision','Hold / Cancelled','Reuse','New','Unit-wise qty','Remark'];
     const r1=[H1];
     items.slice().sort((x,y)=>(x.sr||0)-(y.sr||0)).forEach(it=>{
       if(!(Number.isInteger(it.sr)&&it.sr>0))return; // totals / blank rows
       const us=bySr.get(it.sr)||[];
       const ua=us.length?us[0].unitArea:(typeof it.a==='number'&&typeof it.b==='number'?it.a*it.b/1e6:null);
       const q=typeof it.qty==='number'?it.qty:it.qty??'';
-      r1.push([it.sr??'',it.a??'',it.code??'',it.b??'',q,ua==null?'':Math.round(ua*1e6)/1e6,(ua!=null&&typeof q==='number')?Math.round(ua*q*1e6)/1e6:'',it.mat??'',it.cut??'',it.ref??'',it.ext??'',it.room??'',it.unit??'',us.map(u=>u.id).join(', '),us.length?(us.length===1?(us[0].status||'Pending'):us.map(u=>`${u.id}: ${u.status||'Pending'}`).join('; ')):(it.skip?'(no barcode: '+it.skip+')':''),...(us.length?flagsAll(us):['','','']),it.removedRow?(us.some(u=>u.flag)?'Removed from list':'Removed from list (released)'):[...new Set(us.map(u=>u.rev||0))].sort((x,y)=>x-y).map(r=>r?'Rev '+r:'Original').join(' + ')||'Original',(()=>{const f=us.filter(u=>u.flag);if(!f.length)return '';const l=x=>x==='hold'?'On hold':'Cancelled';return f.length===us.length?l(f[0].flag):f.map(u=>u.id+': '+l(u.flag)).join('; ');})()]);
+      r1.push([it.sr??'',it.a??'',it.code??'',it.b??'',q,ua==null?'':Math.round(ua*1e6)/1e6,(ua!=null&&typeof q==='number')?Math.round(ua*q*1e6)/1e6:'',it.mat??'',it.cut??'',it.ref??'',it.ext??'',it.room??'',it.unit??'',us.map(u=>u.id).join(', '),us.length?(us.length===1?(us[0].status||'Pending'):us.map(u=>`${u.id}: ${u.status||'Pending'}`).join('; ')):(it.skip?'(no barcode: '+it.skip+')':''),...(us.length?flagsAll(us):['','','']),it.removedRow?(us.some(u=>u.flag)?'Removed from list':'Removed from list (released)'):[...new Set(us.map(u=>u.rev||0))].sort((x,y)=>x-y).map(r=>r?'Rev '+r:'Original').join(' + ')||'Original',(()=>{const f=us.filter(u=>u.flag);if(!f.length)return '';const l=x=>x==='hold'?'On hold':'Cancelled';return f.length===us.length?l(f[0].flag):f.map(u=>u.id+': '+l(u.flag)).join('; ');})(),it.reuse??'',it.newc??'',it.ucounts?it.ucounts.filter(x=>x.c).map(x=>x.label+': '+x.c).join('; '):'',it.rmkText??'']);
     });
-    const r2=[['Barcode No.','Sr. no.','Unit # of Qty',"Dim. 'A'","Dim. 'B'",'CODE','Unit Area','Material Remark','Cutting Code','Reference','Extrusion','Room No.','Unit','Status','Sorted','Packed','Unpacked & Verified','Last scanned','Revision','Hold / Cancelled','Note']];
-    units.forEach(u=>r2.push([u.id,u.sr,u.of>1?`${u.n} of ${u.of}`:'1 of 1',u.a??'',u.b??'',u.code,u.unitArea==null?'':Math.round(u.unitArea*1e6)/1e6,u.mat,u.cut,u.ref,u.ext,u.room,u.unit,u.status||'Pending',...flagsAll([u]),u.at?new Date(u.at).toLocaleString():'',u.rev?'Rev '+u.rev:'Original',u.flag==='hold'?'On hold':u.flag==='cancelled'?'Cancelled':'',[u.flagNote,u.chgNote].filter(Boolean).join(' | ')]));
+    const r2=[['Barcode No.','Sr. no.','Unit # of Qty',"Dim. 'A'","Dim. 'B'",'CODE','Unit Area','Material Remark','Cutting Code','Reference','Extrusion','Room No.','Unit','Status','Sorted','Packed','Unpacked & Verified','Last scanned','Revision','Hold / Cancelled','Note','Reuse/New','Remark','Seq in unit']];
+    units.forEach(u=>r2.push([u.id,u.sr,u.of>1?`${u.n} of ${u.of}`:'1 of 1',u.a??'',u.b??'',u.code,u.unitArea==null?'':Math.round(u.unitArea*1e6)/1e6,u.mat,u.cut,u.ref,u.ext,u.room,u.unit,u.status||'Pending',...flagsAll([u]),u.at?new Date(u.at).toLocaleString():'',u.rev?'Rev '+u.rev:'Original',u.flag==='hold'?'On hold':u.flag==='cancelled'?'Cancelled':'',[u.flagNote,u.chgNote].filter(Boolean).join(' | '),u.ru||'',u.remark||'',u.k??'']));
     const r3=[['Time','Barcode No.','Status set','Previous status']];
     log.forEach(l=>r3.push([new Date(l.t).toLocaleString(),l.id,l.to,l.from||'Pending']));
     const blob=await buildXlsx([
-      {name:'Item List',rows:r1,widths:[9,10,14,10,11,11,11,18,22,18,16,10,14,16,22,9,9,12,11,20]},
-      {name:'Barcode Register',rows:r2,widths:[16,9,12,10,10,14,11,18,22,18,16,10,14,22,9,9,12,20,11,16,28]},
+      {name:'Item List',rows:r1,widths:[9,10,14,10,11,11,11,18,22,18,16,10,14,16,22,9,9,12,11,20,8,8,22,10]},
+      {name:'Barcode Register',rows:r2,widths:[16,9,12,10,10,14,11,18,22,18,16,10,14,22,9,9,12,20,11,16,28,11,10,9]},
       {name:'Scan Log',rows:r3,widths:[22,16,22,22]},
       ...((meta.revs||[]).length?[{name:'Revision History',rows:[['Rev','When','File','Added','Removed','Changed','Released','Removed panels set to']].concat(meta.revs.map(r=>['Rev '+r.n,new Date(r.at).toLocaleString(),r.file,r.added,r.removed,r.changed,r.released||0,r.mode==='hold'?'On hold':r.mode==='cancelled'?'Cancelled':''])),widths:[8,22,34,8,9,9,9,22]}]:[])]);
     download(blob,'Panel_Barcode_Register_'+new Date().toISOString().slice(0,10)+'.xlsx');logAct('Excel exported',`${units.length} barcodes, ${log.length} scans`);
@@ -1346,7 +1391,7 @@ document.addEventListener('DOMContentLoaded',async()=>{
   const lChange=()=>{settings.paper=$('#lPaper').value;settings.pw=+$('#lW').value||210;settings.ph=+$('#lH').value||297;settings.margin=Math.max(0,+$('#lMargin').value||0);settings.gap=Math.max(0,+$('#lGap').value||0);settings.cuts=$('#lCuts').checked;syncL();saveSettings();renderLayout();};
   ['#lPaper','#lW','#lH','#lMargin','#lGap','#lCuts'].forEach(q=>$(q).addEventListener(q==='#lPaper'||q==='#lCuts'?'change':'input',lChange));
   $('#btnWholePages').onclick=()=>{const L=layout();if(!L.n)return;const bs=Math.max(1,+$('#batchSize').value||100);$('#batchSize').value=Math.min(1000,Math.max(L.n,Math.round(bs/L.n)*L.n));updateBatch();renderLayout();};
-  $('#sLeft').value=settings.left;$('#sSize').value=settings.sizePt;$('#sProj1').value=settings.proj1;$('#sLogo').checked=settings.logo;
+  $('#sLeft').value=settings.left;$('#sSize').value=settings.sizePt;$('#sProj1').value=settings.proj1;$('#sLogo').checked=settings.logo;$('#sRU').checked=settings.showRU!==false;$('#sRU').onchange=e=>{settings.showRU=e.target.checked;saveSettings();if(selId)select(selId);};
   $('#sProj1').oninput=e=>{settings.proj1=e.target.value;saveSettings();};$('#sLeft').oninput=e=>{settings.left=e.target.value;saveSettings();};$('#sSize').oninput=e=>{settings.sizePt=Math.max(6,Math.min(30,+e.target.value||16));saveSettings();};$('#sLogo').onchange=e=>{settings.logo=e.target.checked;saveSettings();};
   $('#modes').onclick=e=>{const m=e.target.dataset.m;if(!m)return;mode=m;logAct('Status selected',m);meta.mode=m;idb.put('meta',{k:'mode',v:m});renderModes();$('#scanIn').focus();};
   $('#scanIn').onkeydown=e=>{if(e.key==='Enter'){applyScan(e.target.value);e.target.value='';}};
