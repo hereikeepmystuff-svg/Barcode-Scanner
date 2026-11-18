@@ -61,15 +61,15 @@ video{width:100%;max-height:300px;background:#000;border-radius:10px}
 .stk .head{position:absolute;left:0;right:0;top:3.6mm;text-align:center;font-size:12pt;font-weight:800;line-height:1.15}
 .stk .col{position:absolute;top:10.5mm;width:34mm}
 .stk .col.l{left:5mm}.stk .col.r{right:5mm}
-.stk .bc{line-height:0;height:12mm}
+.stk .bc{line-height:0;height:9mm}
 .stk .col.r .bc{text-align:right}
 .stk .num{font-size:12pt;font-weight:800;margin-top:1mm;letter-spacing:.3mm;white-space:nowrap}
 .stk .col.r .num{text-align:right}
 .stk .sub{margin-top:1.2mm;font-weight:800;line-height:1.1;white-space:nowrap;overflow:hidden}
-.stk .col.l .sub{font-size:11pt}.stk .col.l .sub.ru{margin-top:.6mm}
+.stk .col.l .sub{font-size:13pt}.stk .col.l .sub.ru{margin-top:.6mm}
 .stk.boq .size{bottom:2.4mm}.stk.boq .col .sub{margin-top:.7mm}.stk.boq .col.l .sub.ru{margin-top:.1mm}
 .stk .col.r .sub{text-align:right}
-.stk .logo{position:absolute;left:50%;top:12mm;height:10mm;margin-left:-8.5mm}
+.stk .logo{position:absolute;left:50%;top:10.5mm;height:9mm;margin-left:-7.7mm}
 .stk .size{position:absolute;left:4mm;right:4mm;bottom:3.4mm;text-align:center;font-weight:800;white-space:nowrap;line-height:1.1}
 #printRoot{display:none}
 @media print{
@@ -622,7 +622,7 @@ const idb={db:null,ok:false,
 };
 
 /* ================= state ================= */
-let units=[],items=[],byId=new Map(),log=[],meta={},settings={proj1:'Adani Linkbay',proj2:'Tower-A',left:'Tower-A',showRU:true,logo:true,sizePt:16,digits:6,paper:'label',pw:210,ph:297,margin:5,gap:0,cuts:false};
+let units=[],items=[],byId=new Map(),log=[],meta={},settings={v:2,proj1:'Adani Linkbay',proj2:'Tower-A',left:'Tower-A',showRU:true,logo:true,sizePt:20,digits:6,paper:'label',pw:210,ph:297,margin:5,gap:0,cuts:false};
 let filtered=[],page=0,selId=null,mode='Packed',pending=null;
 let activity=[],dirty=false,dirHandle=null,backupsInfo=[],lastBackupAt=0,folderMsg='';
 const BACKUP_MS=window.__BACKUP_MS||15*60*1000,KEEP=3;
@@ -637,7 +637,7 @@ async function loadAll(){
   activity=ac.sort((a,b)=>a.k-b.k);backupsInfo=bk.sort((a,b)=>b.k-a.k);
   units=u.map(decorate);units.sort((x,y)=>x.sr-y.sr||x.n-y.n);items=i.sort((x,y)=>x.ix-y.ix);log=l.sort((x,y)=>x.k-y.k);
   for(const r of m){if(r.k==='dirHandle')dirHandle=r.v;else meta[r.k]=r.v;}
-  if(meta.settings)Object.assign(settings,meta.settings);
+  if(meta.settings){Object.assign(settings,meta.settings);if(!settings.v){if(settings.sizePt===16)settings.sizePt=20;settings.v=2;}}
   if(meta.mode)mode=meta.mode;
   indexAll();
 }
@@ -748,7 +748,9 @@ function makeUnits(parsed){
     if(wst)warn.push(`This is a Barcode Register export: ${wst} barcode(s) already carry a scan status, which will be loaded.`);
     return {units:out,skipped,warn};
   }
-  const maxSr=Math.max(0,...parsed.items.map(i=>Number.isInteger(i.sr)?i.sr:0));padW=Math.max(settings.digits,String(maxSr).length);
+  const maxSr=Math.max(0,...parsed.items.map(i=>Number.isInteger(i.sr)?i.sr:0));
+  const boqTotal=parsed.boq?parsed.items.reduce((t,i)=>t+(i.ucounts?Math.max(i.ucounts.reduce((x,y)=>x+y.c,0),0)||(Number.isInteger(i.qty)?i.qty:0):0),0):0;
+  padW=Math.max(settings.digits,String(Math.max(maxSr,boqTotal)).length);let seqN=0;
   parsed.items.forEach((it,ix)=>{
     it.ix=ix;delete it.skip;
     const sr=it.sr;let q=it.qty;
@@ -765,7 +767,7 @@ function makeUnits(parsed){
       const total=per.length,rc=Number(it.reuse)||0,nc=Number(it.newc)||0,rcount=Math.max(0,Math.min(total,rc));
       if(rc+nc!==total)bw.push(`Sr. no. ${sr}: Reuse + New (${rc+nc}) does not equal ${total} — the extra panels are marked New`);
       const rt=String(it.rmkText??'').trim(),rk=/^add/i.test(rt)?'add':/^rem/i.test(rt)?'remove':'';
-      per.forEach((pp,i)=>out.push(decorate({id:total===1?pad(sr):`${pad(sr)}-${i+1}`,sr,n:i+1,of:total,k:pp.k,a:it.a??null,b:it.b??null,code:it.code??'',unitArea:ua,mat:it.mat??'',cut:it.cut??'',ref:it.ref??'',ext:it.ext??'',room:'',unit:pp.unit,ru:i<rcount?'Reuse':'New',rmk:rk,remark:rt,status:'',at:null,flag:'',rev:0})));
+      per.forEach((pp,i)=>out.push(decorate({id:pad(++seqN),sr,n:i+1,of:total,k:pp.k,a:it.a??null,b:it.b??null,code:it.code??'',unitArea:ua,mat:it.mat??'',cut:it.cut??'',ref:it.ref??'',ext:it.ext??'',room:'',unit:pp.unit,ru:i<rcount?'Reuse':'New',rmk:rk,remark:rt,status:'',at:null,flag:'',rev:0})));
       return;
     }
     for(let n=1;n<=q;n++){
@@ -780,6 +782,16 @@ function makeUnits(parsed){
 const RKEYS=['a','b','code','room','unit','mat','cut','ref','ext','ru'];
 const ukey=u=>u.k!==undefined?`${u.sr}|${u.unit}|${u.k}`:u.sr+'/'+u.n;
 const isBoq=l=>l.some(u=>u.k!==undefined);
+const numStyle=l=>isBoq(l)?(l.some(u=>u.id.includes('-'))?'boq-old':'boq'):'old';
+function assignRevIds(nu){
+  const old=new Map(units.map(u=>[ukey(u),u])),used=new Set(units.map(u=>u.id));
+  nu.forEach(u=>{const o=old.get(ukey(u));if(o&&o.id!==u.id){u.id=o.id;decorate(u);}});
+  const seqMode=isBoq(nu);let next=1+Math.max(0,...units.map(u=>/^\d+$/.test(u.id)?parseInt(u.id,10):0));
+  nu.forEach(u=>{if(old.has(ukey(u)))return;
+    if(seqMode){u.id=pad(next++);decorate(u);}
+    else if(used.has(u.id)){let m=1;while(used.has(`${pad(u.sr)}-${m}`))m++;u.id=`${pad(u.sr)}-${m}`;decorate(u);}
+    used.add(u.id);});
+}
 function computeDiff(nu){
   const old=new Map(units.map(u=>[ukey(u),u])),nw=new Set(nu.map(ukey));
   const added=[],removed=[],changed=[],released=[],tagged=[];
@@ -795,7 +807,8 @@ function showPreview(p,fileName,target){
   const multi=p.parsed.items.filter(i=>i.qty>1&&!i.skip).length;
   const isReg=!!p.parsed.register;
   const existing=units.length;
-  const compat=!existing||isBoq(units)===isBoq(us);
+  const compat=!existing||numStyle(units)===numStyle(us);
+  if(existing&&compat&&!p.parsed.register)assignRevIds(us);
   const nRem=us.filter(u=>u.rmk==='remove').length,nAdd=us.filter(u=>u.rmk==='add').length;
   let h=`<div class="note"><b>${p.parsed.items.length.toLocaleString()}</b> rows read from sheet “${esc(p.parsed.sheet)}” (header on row ${p.parsed.headerRow}).<br>
    <b>${us.length.toLocaleString()}</b> barcodes will be ${isReg?'loaded from the register':'generated'}, numbered ${esc(us[0]?us[0].id:'')} … ${esc(us.length?us[us.length-1].id:'')} (${padW} digits).${multi?` (${multi} rows have quantity &gt; 1 and get one barcode per unit.)`:' No row has a quantity above 1, so every barcode number = Sr. no.'}</div>`;
@@ -806,7 +819,7 @@ function showPreview(p,fileName,target){
   }
   p.diff=null;
   const rmRadio=`<div style="margin-top:6px"><label><input type="radio" name="rm" value="hold" checked> <b>On hold</b> (can be released later)</label> &nbsp; <label><input type="radio" name="rm" value="cancelled"> <b>Cancelled</b> (permanent unless released by hand)</label></div>`;
-  if(existing&&!isReg&&!compat)h+=`<div class="note bad"><b>The current list (${existing.toLocaleString()} barcodes) is in a different format.</b> Confirming will <b>replace</b> it with this list and clear the old scan statuses and scan log (a backup is saved first).${nRem?` ${nRem} panel(s) tagged <b>Remove</b> will be imported as:${rmRadio}`:''}</div>`;
+  if(existing&&!isReg&&!compat)h+=`<div class="note bad"><b>The current list (${existing.toLocaleString()} barcodes) is in a different format${numStyle(units)==='boq-old'&&numStyle(us)==='boq'?' (older numbering with “-1” suffixes; the new numbering is one running number per panel)':''}.</b> Confirming will <b>replace</b> it with this list and clear the old scan statuses and scan log (a backup is saved first).${nRem?` ${nRem} panel(s) tagged <b>Remove</b> will be imported as:${rmRadio}`:''}</div>`;
   else if(!existing&&nRem)h+=`<div class="note warn"><b>${nRem}</b> panel(s) are tagged <b>Remove</b> — they will be imported but blocked from scanning. Mark them as:${rmRadio}</div>`;
   else if(existing&&isReg)h+=`<div class="note warn">Data already exists (${existing.toLocaleString()} barcodes). Confirming will <b>replace</b> the list with this register; scan status and scan log are kept for barcode numbers that still exist.</div>`;
   else if(existing){
@@ -814,7 +827,7 @@ function showPreview(p,fileName,target){
     const bigChange=d.changed.length>20&&d.changed.length>0.2*us.length;
     const L=(a,f)=>a.length?`<div class="rvlist">${a.slice(0,40).map(f).join('<br>')}${a.length>40?`<br>… and ${a.length-40} more`:''}</div>`:'';
     const none=!d.added.length&&!d.removed.length&&!d.changed.length&&!d.released.length;
-    h+=`<div class="note warn"><b>This changes an existing list (${existing.toLocaleString()} barcodes).</b> Panels are matched by Sr. no. and unit number; existing barcode numbers, statuses and scan history are kept. ${none?'<br><b>No differences found.</b>':''}</div>`;
+    h+=`<div class="note warn"><b>This changes an existing list (${existing.toLocaleString()} barcodes).</b> Panels are matched by Sr. no. and unit number; existing barcode numbers, statuses and scan history are kept; added panels continue after the highest number in use. ${none?'<br><b>No differences found.</b>':''}</div>`;
     if(bigChange)h+=`<div class="note bad"><b>Check before confirming:</b> ${d.changed.length.toLocaleString()} panels changed size or code. If Sr. no. was renumbered in this file, matching by Sr. no. will be wrong — Cancel and ask for the original numbering.</div>`;
     h+=`<div class="note ok"><b>${d.added.length}</b> added — continue the same series, marked with the next revision number${L(d.added,u=>esc(u.id)+' · '+esc(u.size)+' · '+esc(u.code))}</div>`;
     h+=`<div class="note bad"><b>${d.removed.length}</b> removed (dropped from the list or tagged Remove) — kept in the app, scanning them will show a warning${L(d.removed,u=>esc(u.id)+' · '+esc(u.size)+' · '+esc(u.code)+(u.status?' · already '+esc(u.status):''))}`+(d.removed.length?rmRadio:'')+`</div>`;
@@ -833,15 +846,9 @@ async function commitImport(fileName){
   if(units.length)await makeBackup('before import');
   const {built,parsed}=pending;
   const old=new Map(units.map(u=>[ukey(u),u]));
-  const revMode=units.length>0&&!parsed.register&&isBoq(units)===isBoq(built.units);
+  const revMode=units.length>0&&!parsed.register&&numStyle(units)===numStyle(built.units);
   const replaceOther=units.length>0&&!parsed.register&&!revMode;
-  if(revMode){
-    built.units.forEach(u=>{const o=old.get(ukey(u));if(o&&o.id!==u.id){u.id=o.id;decorate(u);}});
-    const used=new Set(units.map(u=>u.id));
-    built.units.forEach(u=>{if(old.has(ukey(u)))return;
-      if(used.has(u.id)){let m=1;while(used.has(`${pad(u.sr)}-${m}`))m++;u.id=`${pad(u.sr)}-${m}`;decorate(u);}
-      used.add(u.id);});
-  }
+  if(revMode)assignRevIds(built.units);
   const newKey=new Map(built.units.map(u=>[ukey(u),u.id]));
   const idMap=new Map();units.forEach(u=>{const nid=newKey.get(ukey(u));if(nid)idMap.set(u.id,nid);else if(revMode)idMap.set(u.id,u.id);});
   const hadStatus=units.some(u=>u.status);
@@ -926,16 +933,21 @@ function updateBatch(){
 function fitPt(text,maxPt,widthMm){const est=widthMm/(Math.max(1,text.length)*0.64*0.3528);return Math.max(6,Math.min(maxPt,Math.floor(est*2)/2));}
 function stickerHTML(u){
   const unit=String(u.unit||''),boq=u.k!==undefined;
-  const ufs=fitPt(unit,boq?24:13,34);
-  const line=boq?[fmt(u.a),u.code,fmt(u.b)].filter(x=>x!=='').join('\u2002\u2002'):[u.code,u.size].filter(x=>x!=='').join('   ');
-  const sfs=fitPt(line,settings.sizePt||16,90);
-  const bc=barcodeSVG(u.id,12,33,0.5);
+  const ufs=fitPt(unit,boq?28:13,34);
+  const parts=(boq?[fmt(u.a),u.code,fmt(u.b)]:[u.code,u.size]).filter(x=>x!=='').map(String),SEP=boq?'\u2002\u2002':'   ';
+  const maxPt=settings.sizePt||20,one=parts.join(SEP);
+  let sfs=fitPt(one,maxPt,90),sizeHTML=esc(one);
+  if(boq&&parts.length>1&&sfs<12){
+    let best=null;for(let i=1;i<parts.length;i++){const l1=parts.slice(0,i).join(SEP),l2=parts.slice(i).join(SEP),pt=Math.min(fitPt(l1,Math.min(12,maxPt),90),fitPt(l2,Math.min(12,maxPt),90));if(!best||pt>best.pt)best={pt,l1,l2};}
+    if(best&&best.pt>=10&&best.pt>=sfs+3){sfs=best.pt;sizeHTML=esc(best.l1)+'<br>'+esc(best.l2);}
+  }
+  const bc=boq?barcodeSVG(u.id,9,28,0.45):barcodeSVG(u.id,9,33,0.5);
   return `<div class="stk${boq?' boq':''}"><div class="frame"></div>
 <div class="head">${esc(settings.proj1)}</div>
 <div class="col l"><div class="bc">${bc}</div><div class="num">${esc(u.id)}</div><div class="sub">${esc(settings.left)}</div>${boq&&settings.showRU!==false&&u.ru?`<div class="sub ru">${esc(u.ru)}</div>`:''}</div>
 ${settings.logo?`<img class="logo" src="${LOGO}" alt="">`:''}
 <div class="col r"><div class="bc">${bc}</div><div class="num">${esc(u.id)}</div><div class="sub" style="font-size:${ufs}pt">${esc(unit)}</div></div>
-<div class="size" style="font-size:${sfs}pt">${esc(line)}</div></div>`;
+<div class="size" style="font-size:${sfs}pt">${sizeHTML}</div></div>`;
 }
 function fitPreview(){
   const box=$('#prevBox'),sc=$('#prevScale');const avail=box.clientWidth-20;const full=100*3.7795;
@@ -1052,7 +1064,7 @@ function refreshViews(){renderTiles();renderRecent();renderGroup();applyFilter(t
 async function applyScan(raw){
   const id=String(raw||'').trim();if(!id||holdOpen)return;
   let u=byId.get(id);const R=$('#result');
-  if(!u&&/^\d+$/.test(id)){const n=+id;u=units.find(x=>x.sr===n&&x.of===1);}
+  if(!u&&/^\d+$/.test(id)){if(units.length&&units[0].k!==undefined){const L=String(units[0].id).replace(/\D.*$/,'').length;u=byId.get(id.padStart(L,'0'));}else{const n=+id;u=units.find(x=>x.sr===n&&x.of===1);}}
   if(!u){beep(false);R.innerHTML=`<div class="result bad"><div class="big">Unknown barcode</div>“${esc(id)}” is not in the list.</div>`;mnote('bad','Unknown barcode '+esc(id));bpush(id,mode,'unknown','Not in list');logAct('Scan rejected',`${id} not in list`);return;}
   if(u.flag){beep(false);holdPopup(u);bpush(u.id,mode,'hold',u.flag==='hold'?'On hold':'Cancelled');logAct('Scan blocked',`${u.id} is ${u.flag==='hold'?'on hold':'cancelled'}`);return;}
   const prev=u.status||'';
@@ -1392,7 +1404,7 @@ document.addEventListener('DOMContentLoaded',async()=>{
   ['#lPaper','#lW','#lH','#lMargin','#lGap','#lCuts'].forEach(q=>$(q).addEventListener(q==='#lPaper'||q==='#lCuts'?'change':'input',lChange));
   $('#btnWholePages').onclick=()=>{const L=layout();if(!L.n)return;const bs=Math.max(1,+$('#batchSize').value||100);$('#batchSize').value=Math.min(1000,Math.max(L.n,Math.round(bs/L.n)*L.n));updateBatch();renderLayout();};
   $('#sLeft').value=settings.left;$('#sSize').value=settings.sizePt;$('#sProj1').value=settings.proj1;$('#sLogo').checked=settings.logo;$('#sRU').checked=settings.showRU!==false;$('#sRU').onchange=e=>{settings.showRU=e.target.checked;saveSettings();if(selId)select(selId);};
-  $('#sProj1').oninput=e=>{settings.proj1=e.target.value;saveSettings();};$('#sLeft').oninput=e=>{settings.left=e.target.value;saveSettings();};$('#sSize').oninput=e=>{settings.sizePt=Math.max(6,Math.min(30,+e.target.value||16));saveSettings();};$('#sLogo').onchange=e=>{settings.logo=e.target.checked;saveSettings();};
+  $('#sProj1').oninput=e=>{settings.proj1=e.target.value;saveSettings();};$('#sLeft').oninput=e=>{settings.left=e.target.value;saveSettings();};$('#sSize').oninput=e=>{settings.sizePt=Math.max(6,Math.min(30,+e.target.value||20));saveSettings();};$('#sLogo').onchange=e=>{settings.logo=e.target.checked;saveSettings();};
   $('#modes').onclick=e=>{const m=e.target.dataset.m;if(!m)return;mode=m;logAct('Status selected',m);meta.mode=m;idb.put('meta',{k:'mode',v:m});renderModes();$('#scanIn').focus();};
   $('#scanIn').onkeydown=e=>{if(e.key==='Enter'){applyScan(e.target.value);e.target.value='';}};
   $('#scanGo').onclick=()=>{applyScan($('#scanIn').value);$('#scanIn').value='';$('#scanIn').focus();};
