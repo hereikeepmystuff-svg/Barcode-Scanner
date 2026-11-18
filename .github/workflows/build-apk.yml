@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check version and changelog
+        run: python3 tools/release_check.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -27,7 +29,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest "$RUNNER_TEMP/PanelBarcodeTracker.apk" --title "Latest APK" --notes "Debug build of ${GITHUB_SHA::7} (run #${GITHUB_RUN_NUMBER})" --target "$GITHUB_SHA"
+          VERSION=$(cat VERSION)
+          python3 tools/release_check.py --notes > "$RUNNER_TEMP/notes.md"
+          echo "" >> "$RUNNER_TEMP/notes.md"; echo "Build #${GITHUB_RUN_NUMBER} (${GITHUB_SHA::7}). Full history: CHANGELOG.md" >> "$RUNNER_TEMP/notes.md"
+          cp "$RUNNER_TEMP/PanelBarcodeTracker.apk" "$RUNNER_TEMP/PanelBarcodeTracker-v${VERSION}.apk"
+          gh release create latest "$RUNNER_TEMP/PanelBarcodeTracker.apk" "$RUNNER_TEMP/PanelBarcodeTracker-v${VERSION}.apk" --title "Latest APK (v${VERSION})" --notes-file "$RUNNER_TEMP/notes.md" --target "$GITHUB_SHA"
       - name: Keep a copy of the APK on branch apk-build
         run: |
           git config user.name "github-actions"

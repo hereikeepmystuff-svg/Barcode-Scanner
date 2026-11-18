@@ -7,6 +7,13 @@ Barcode generation, 100 x 50 mm sticker printing and scan-status tracking for th
 
 Every push to `main` runs **Actions → Build APK**. The finished APK is published at **Releases → Latest APK** (download `PanelBarcodeTracker.apk` straight to the phone). Builds are signed with a fixed key, so a new APK installs over the old one and keeps your data.
 
+## Version and changelog
+Current version: see `VERSION`; history: `CHANGELOG.md` (also shown in the app: version button in the header, or ⋯ menu → Version in the scanner view).
+The version lives in one place – the `changelog` JSON block inside `web/Panel_Barcode_Tracker.html`. After editing it run
+`python3 tools/release_check.py --write` (updates `VERSION`, `CHANGELOG.md` and the APK's copy of the page); CI runs the same script without `--write`
+and fails if anything is out of step. The APK's `versionName` comes from `VERSION`; `versionCode` is the build number.
+Excel reports, backups and the activity log record the app version too.
+
 ## Android app (WebView wrapper)
 
 The whole app is `app/src/main/assets/index.html` (same file as the browser version).
